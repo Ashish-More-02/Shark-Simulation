@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script></head><body>
+<div id="out">pending</div>
+<script type="module">
+const out=document.getElementById('out');
+const log=[];const flush=()=>out.textContent=log.join(' | ');
+addEventListener('error',e=>{log.push('ERR '+(e.message||e.error));out.textContent=log.join(' | ');});
+try{
+  const c=document.createElement('canvas');
+  log.push('webgl2='+!!c.getContext('webgl2'));flush();
+  const THREE=await import('three');
+  log.push('three='+THREE.REVISION);flush();
+  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+  const l=new GLTFLoader();
+  const names=['shark-model','fish','grass','log','sea-anemone'];
+  for(const n of names){
+    try{const g=await l.loadAsync('assets/'+n+'.glb');log.push(n+'=OK');flush();}
+    catch(e){log.push(n+'=FAIL:'+e.message);flush();}
+  }
+}catch(e){log.push('THROW '+e.message);}
+out.textContent=log.join(' | ');
+</script></body></html>

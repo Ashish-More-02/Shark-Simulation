@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deep Ocean Shark</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-row"><span class="label">DEPTH</span><span id="depth">0 m</span></div>
+    <div class="hud-row"><span class="label">SPEED</span><span id="speed">0.0</span></div>
+    <div class="hud-row"><span class="label">ORBS</span><span id="orbs">0 / 0</span></div>
+  </div>
+
+  <div id="hint" class="hidden">Click to look around &nbsp;·&nbsp; <b>WASD</b> move &nbsp; <b>Q/E</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Esc</b> free cursor</div>
+
+  <!-- Start / loading screen -->
+  <div id="start">
+    <div class="panel">
+      <h1>🦈 Deep Ocean Shark</h1>
+      <p class="tag">Explore the deep as an apex predator.</p>
+      <div id="loading">Loading the ocean…</div>
+      <div id="controls" class="hidden">
+        <div class="ctrls">
+          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> swim &amp; turn</div>
+          <div><kbd>Q</kbd> rise &nbsp; <kbd>E</kbd> dive</div>
+          <div><kbd>Shift</kbd> boost</div>
+          <div>Move the <b>mouse</b> to look · collect the glowing orbs</div>
+        </div>
+        <button id="dive">Dive In</button>
+      </div>
+    </div>
+    <div class="credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent)</div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
