@@ -4,6 +4,11 @@ A tiny 3D browser game built with **Three.js** (no build step). Swim through the
 deep ocean as a shark, explore, and collect glowing orbs — viewed from a
 top-back chase camera.
 
+## future development 
+
+- bundle this into a electron app
+- add more features to this simulation.
+
 ## Run it
 
 You need a local server (loading `.glb` models fails from a plain `file://` page).
