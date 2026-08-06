@@ -6,6 +6,7 @@ import { softSprite } from './materials.js';
 import { ringRadius } from './placement.js';
 import { insideSolid } from './collision.js';
 import { setOrbs } from './hud.js';
+import { playCollectSound } from './audio.js';
 
 // ============================================================
 //  COLLECTIBLE ORBS
@@ -74,6 +75,7 @@ export function updateOrbs(dt, t, sharkPos) {
       scene.remove(orb);
       orbs.splice(i, 1);
       setOrbs(total - orbs.length, total);
+      playCollectSound();
     }
   }
 }

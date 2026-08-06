@@ -214,8 +214,17 @@ export const CREATURES = [
 export const SHARK = {
   maxSpeed: 14, accel: 22, drag: 1.8,
   turn: 1.6, pitchRate: 1.2, pitchLimit: 1.15,
-  boostMul: 1.6, reverseFrac: 0.4, reverseAccelMul: 1.2,
+  // Boost only kicks in holding Shift while thrusting forward. drag pins
+  // normal cruise speed well under maxSpeed (accel/drag ≈ 12.2), so a plain
+  // higher ceiling alone never gets touched — boostAccelMul is what actually
+  // pushes the equilibrium up, past boostSpeed, which then hard-clamps it
+  // there. Releasing Shift drops the ceiling straight back to maxSpeed.
+  boostSpeed: 15, boostAccelMul: 1.25,
+  reverseFrac: 0.4, reverseAccelMul: 1.2,
   tailRateIdle: 0.55, tailRateFast: 2.3,
+  // Flat multipliers on top of the idle→fast interpolation below, so the two
+  // states read as distinctly different gaits rather than points on one ramp.
+  tailNormalMul: 0.8, tailSprintMul: 1.2,
   camOffset: [0, 2.6, 8.5],   // behind (+Z) and above → "top-back over the head"
   startPos: [0, 2, 0],
   floorClearance: 1.8,        // how far the shark stays off the sand
@@ -247,11 +256,14 @@ export const FISH = {
   // leaves the far water to the mountains and the kelp canopy — which is where
   // shoals belong anyway. Bait fish hold to the reef, not the open ocean.
   roam: 0.85,
+  // Scale bumped up across the three larger classes (fry stay fry — a bigger
+  // "cloud of fry" isn't the ask) and weight shifted toward those same
+  // classes, so bigger fish are both individually larger and more common.
   classes: [
-    { scale: [0.3,  0.5], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [2.8, 1.7], weight: 3 },
-    { scale: [0.6,  0.95], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [2.1, 1.5], weight: 4 },
-    { scale: [1.25, 1.8], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [1.6, 1.1], weight: 3 },
-    { scale: [2.3,  3.1], count: [1,  2], spread: [11,  5.5, 11 ], speed: [1.2, 0.8], weight: 2 },
+    { scale: [0.3,  0.5], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [2.8, 1.7], weight: 2 },
+    { scale: [1.0,  1.6], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [2.1, 1.5], weight: 4 },
+    { scale: [2.1,  3.0], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [1.6, 1.1], weight: 4 },
+    { scale: [3.8,  5.0], count: [1,  2], spread: [11,  5.5, 11 ], speed: [1.2, 0.8], weight: 3 },
   ],
 };
 
@@ -272,3 +284,18 @@ export const PARTICLES = {
 // so this count IS the draw-call count. 30 is still nothing next to the ~24 the
 // entire seabed costs.
 export const GOD_RAYS = { count: 30 };
+
+// Three always-on loops (deep ambience, a bubbling texture, and a distant
+// whale) plus a fourth loop whose volume/rate track the shark's speed, so
+// "swimming" has a sound. The rest are one-shot SFX. volume/rate are
+// [atRest, atMaxSpeed] pairs for the swim loop; a flat number for everything
+// else.
+export const AUDIO = {
+  ambience: { url: 'assets/audio/deep-ocean-ambience.mp3', volume: 0.65 },
+  bubbles:  { url: 'assets/audio/bubbles-ambience.ogg',    volume: 0.16 },
+  whale:    { url: 'assets/audio/whale_sound.mp3',         volume: 0.29 },
+  swim:     { url: 'assets/audio/shark_movement.mp3', volume: [0.05, 0.45], rate: [0.8, 1.5] },
+  fishFlee: { url: 'assets/audio/fish-flee.mp3', volume: 0.35, cooldown: 4 },   // min seconds between plays
+  collect:  { url: 'assets/audio/orb-collect.mp3', volume: 0.3 },
+  splash:   { url: 'assets/audio/shark_drop_into_ocean.wav', volume: 0.36 },
+};

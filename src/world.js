@@ -11,6 +11,7 @@ import { createCreatures, updateCreatures } from './creatures.js';
 import { createOrbs, updateOrbs } from './orbs.js';
 import { createShark, updateShark, sharkState, depthMetres } from './shark.js';
 import { setDepth, setSpeed } from './hud.js';
+import { updateSwim, updateFishFlee } from './audio.js';
 
 // ============================================================
 //  WORLD  — composition root. Builds the scene in order, then
@@ -48,15 +49,19 @@ export function updateWorld(dt, t) {
 
   updateGodRays();                  // billboards to the camera the shark just moved
   updateSway(t);
-  updateSchools(dt, t, pos);
+  const fleeing = updateSchools(dt, t, pos);
   updateCreatures(dt, pos);
   updateOrbs(dt, t, pos);
 
-  if (Math.abs(sharkState.speed) > SHARK.wakeAtSpeed) emitWake(pos, sharkState.forward);
+  const speed = Math.abs(sharkState.speed);
+  if (speed > SHARK.wakeAtSpeed) emitWake(pos, sharkState.forward);
   updateWake(dt);
   // bubbles, marine snow and the water ripple are all GPU-side now — no per-frame
   // CPU work and no buffer uploads for any of them.
 
+  updateSwim(speed, SHARK.maxSpeed);
+  updateFishFlee(dt, fleeing);
+
   setDepth(depthMetres());
-  setSpeed(Math.abs(sharkState.speed));
+  setSpeed(speed);
 }

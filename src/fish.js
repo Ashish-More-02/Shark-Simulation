@@ -96,6 +96,7 @@ export function createSchools(protoFish) {
 }
 
 export function updateSchools(dt, t, sharkPos) {
+  let fleeing = false;
   for (const s of schools) {
     s.retarget -= dt;
     if (s.retarget <= 0) {
@@ -115,6 +116,7 @@ export function updateSchools(dt, t, sharkPos) {
       clampRadius(s.target, ROAM);
       speedMul = FISH.fleeSpeedMul;
       s.retarget = Math.min(s.retarget, 1.2);
+      fleeing = true;
     }
 
     tmp.copy(s.target).sub(s.center);
@@ -163,4 +165,5 @@ export function updateSchools(dt, t, sharkPos) {
       m.obj.rotation.z = Math.sin(t * 7 * m.wobble + m.phase) * 0.1;   // tail flick
     }
   }
+  return fleeing;
 }

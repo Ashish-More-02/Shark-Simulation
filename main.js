@@ -13,6 +13,7 @@
 //    props.js      scatter placement + per-instance rock weathering
 //    fish.js       shoaling and fleeing
 //    orbs.js       collectibles
+//    audio.js      ambience loops, speed-reactive swim sound, SFX
 //    shark.js      rig, handling, swim clip, chase camera
 //    input.js      keyboard / mouse-look
 //    hud.js        the only module that touches the DOM
@@ -20,8 +21,9 @@
 // ============================================================
 import { renderer, scene, camera, uTime } from './src/core.js';
 import { buildWorld, updateWorld } from './src/world.js';
-import { showControls, showLoadError, wireStartScreen } from './src/hud.js';
+import { showControls, showLoadError, wireStartScreen, wireMuteButton } from './src/hud.js';
 import { capturePointer } from './src/input.js';
+import { startAmbience, toggleMute } from './src/audio.js';
 
 let last = performance.now();
 
@@ -41,4 +43,5 @@ buildWorld().then(() => {
   requestAnimationFrame(tick);       // render behind the start screen
 }).catch(showLoadError);
 
-wireStartScreen(capturePointer);
+wireStartScreen(() => { capturePointer(); startAmbience(); });
+wireMuteButton(toggleMute);

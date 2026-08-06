@@ -64,9 +64,13 @@ export function updateShark(dt, t) {
 
   // --- speed: thrust, then drag, then clamp ---
   const thrust = thrustAxis();
-  if (thrust) sharkState.speed += SHARK.accel * dt * thrust * (thrust < 0 ? SHARK.reverseAccelMul : 1);
+  const sprinting = boosting() && thrust > 0;
+  if (thrust) {
+    const accelMul = thrust < 0 ? SHARK.reverseAccelMul : (sprinting ? SHARK.boostAccelMul : 1);
+    sharkState.speed += SHARK.accel * dt * thrust * accelMul;
+  }
   sharkState.speed -= sharkState.speed * SHARK.drag * dt;
-  const top = SHARK.maxSpeed * (boosting() ? SHARK.boostMul : 1);
+  const top = sprinting ? SHARK.boostSpeed : SHARK.maxSpeed;
   sharkState.speed = THREE.MathUtils.clamp(sharkState.speed, -SHARK.maxSpeed * SHARK.reverseFrac, top);
 
   // --- orient + move ---
@@ -106,8 +110,12 @@ export function updateShark(dt, t) {
   // --- swim animation: the skeleton does the tail beat, we only scale its rate ---
   const absSpeed = Math.abs(sharkState.speed);
   if (mixer) {
-    const spd01 = Math.min(absSpeed / SHARK.maxSpeed, 1);
-    swimAction.timeScale = SHARK.tailRateIdle + spd01 * (SHARK.tailRateFast - SHARK.tailRateIdle);
+    // Normalized against boostSpeed, not maxSpeed: normal cruise (accel/drag,
+    // well under maxSpeed) leaves room on this scale, so tailRateFast is only
+    // actually reached while sprinting — the tail visibly quickens with it.
+    const spd01 = Math.min(absSpeed / SHARK.boostSpeed, 1);
+    const base = SHARK.tailRateIdle + spd01 * (SHARK.tailRateFast - SHARK.tailRateIdle);
+    swimAction.timeScale = base * (sprinting ? SHARK.tailSprintMul : SHARK.tailNormalMul);
     mixer.update(dt);
   } else {
     // fallback for a non-animated model: fake the tail sway at the body level

@@ -13,6 +13,7 @@ const el = {
   loading:  document.getElementById('loading'),
   controls: document.getElementById('controls'),
   dive:     document.getElementById('dive'),
+  mute:     document.getElementById('mute'),
 };
 
 // Cache the last values so we only touch the DOM when the text actually changes
@@ -47,11 +48,23 @@ export function showLoadError(err) {
 }
 
 // Wire the "Dive In" button. onDive runs after the overlay is dismissed.
+// { once: true } plus the blur are both needed: the button stays in the DOM
+// (just faded out) so it can still hold keyboard focus, and a focused button
+// treats Space as a native click — without this, diving in then pressing
+// Space to swim replays the whole dive sequence, splash included.
 export function wireStartScreen(onDive) {
   el.dive.addEventListener('click', () => {
+    el.dive.blur();
     el.start.classList.add('gone');
     el.hud.classList.remove('hidden');
     el.hint.classList.remove('hidden');
     onDive();
+  }, { once: true });
+}
+
+// toggleMute returns the new muted state; we just reflect it in the icon.
+export function wireMuteButton(toggleMute) {
+  el.mute.addEventListener('click', () => {
+    el.mute.textContent = toggleMute() ? '🔇' : '🔊';
   });
 }
