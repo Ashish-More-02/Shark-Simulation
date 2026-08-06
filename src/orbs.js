@@ -16,14 +16,26 @@ const orbs = [];
 let total = 0;
 
 export function createOrbs() {
-  // one geometry + one halo texture shared by every orb
-  const geo = new THREE.SphereGeometry(0.5, 16, 16);
+  // ONE geometry, ONE orb material, ONE halo material for all of them (§3.7).
+  // Every orb used to build its own MeshStandardMaterial and its own
+  // SpriteMaterial: 24 material instances for 24 draw calls, so every orb was also
+  // a pipeline state change and a fresh uniform upload. They are identical — the
+  // per-orb variation is all in the transform — so they can share.
+  //
+  // 12x8 segments instead of 16x16: these are half-unit spheres that are usually a
+  // few pixels across, and it saves 4k triangles for a difference you cannot see.
+  const geo = new THREE.SphereGeometry(0.5, 12, 8);
   const haloTex = softSprite('rgba(255,236,180,0.95)', 'rgba(255,190,60,0.45)');
+  const orbMat = new THREE.MeshStandardMaterial({
+    color: 0xffe08a, emissive: 0xffb020, emissiveIntensity: 1.4, roughness: 0.3,
+  });
+  const haloMat = new THREE.SpriteMaterial({
+    map: haloTex, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, opacity: 0.85,
+  });
 
   for (let i = 0; i < ORBS.count; i++) {
-    const orb = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-      color: 0xffe08a, emissive: 0xffb020, emissiveIntensity: 1.4, roughness: 0.3,
-    }));
+    const orb = new THREE.Mesh(geo, orbMat);
     // Equal-area radius (placement.js), so the orbs are spread across the whole
     // reef instead of bunched near the start point. Outer bound stays inside
     // WORLD.half — every orb has to be somewhere the shark can actually reach.
@@ -47,10 +59,7 @@ export function createOrbs() {
     orb.position.set(x, y, z);
     orb.userData.phase = Math.random() * Math.PI * 2;
 
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: haloTex, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending, opacity: 0.85,
-    }));
+    const halo = new THREE.Sprite(haloMat);
     halo.scale.setScalar(3.4);
     orb.add(halo);
 

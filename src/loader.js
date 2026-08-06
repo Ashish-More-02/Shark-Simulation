@@ -35,7 +35,7 @@ function mergeByMaterial(root) {
   return merged;
 }
 
-export function loadModel({ url, targetSize, rotY, anchorBottom }) {
+export function loadModel({ url, targetSize, rotY, anchorBottom, twoSided = false }) {
   return new Promise((resolve, reject) => {
     loader.load(url, (gltf) => {
       let model = gltf.scene;
@@ -53,9 +53,19 @@ export function loadModel({ url, targetSize, rotY, anchorBottom }) {
       let hasTexture = false;
       model.traverse((o) => {
         if (!o.isMesh) return;
-        o.frustumCulled = false;   // skinned verts deform outside their bind-pose bounds
+        // Culling was disabled for EVERY mesh here, which meant nothing in the
+        // world was ever frustum-culled — the whole scene, including everything
+        // behind the camera, was submitted every frame. The stated reason only
+        // applies to skinned rigs, whose verts really are placed by bones and can
+        // deform outside their bind-pose bounds, so scope it to those.
+        // (The seabed props opt out separately in props.js, because a single
+        // InstancedMesh spans the whole world and its bounding sphere is
+        // therefore useless — spatial chunking is the fix, see PERFORMANCE.md.)
+        o.frustumCulled = !o.isSkinnedMesh;
         for (const mat of (Array.isArray(o.material) ? o.material : [o.material])) {
-          mat.side = THREE.DoubleSide;
+          // Backface culling on by default — see the `twoSided` note in config.js
+          // for which models genuinely need both faces and why.
+          mat.side = twoSided ? THREE.DoubleSide : THREE.FrontSide;
           // Several of these models came through an FBX -> glTF conversion that
           // stamped metallicFactor 0.4 onto everything — leaves, bone, fish skin,
           // pebbles. Nothing in this scene is metal, and in three's PBR that 0.4

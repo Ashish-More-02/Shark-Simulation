@@ -63,12 +63,18 @@ function makeSandTextures() {
   cx.putImageData(img, 0, 0);
   nx.putImageData(nImg, 0, 0);
 
-  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  // Anisotropic filtering was pinned to getMaxAnisotropy() — 16 on Apple silicon —
+  // on BOTH the albedo and the normal map of a plane that fills the lower half of
+  // the screen. That is up to 32 texture taps per fragment at grazing angles,
+  // which is where the seabed spends most of its screen area. 4 is the standard
+  // sweet spot: the near sand still holds its ripple detail, and the far sand it
+  // would have sharpened is behind fog anyway.
+  const aniso = Math.min(renderer.capabilities.getMaxAnisotropy(), 4);
   const finish = (canvasEl, srgb) => {
     const t = new THREE.CanvasTexture(canvasEl);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(14, 14);
-    t.anisotropy = maxAniso;
+    t.anisotropy = aniso;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
     return t;
   };
@@ -92,6 +98,10 @@ export function createSeabed() {
   const p = seabed.geometry.attributes.position;
   for (let i = 0; i < p.count; i++) p.setZ(i, seabedHeight(p.getX(i), -p.getY(i)));
   seabed.geometry.computeVertexNormals();
+
+  // Static for the rest of the run — keep it out of the per-frame matrix walk (§4.4).
+  seabed.matrixAutoUpdate = false;
+  seabed.updateMatrix();
 
   scene.add(seabed);
   return seabed;

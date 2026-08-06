@@ -21,9 +21,53 @@ export const WORLD = {
   mountainRing: 78,
 };
 
-export const DEEP_COLOR  = 0x0d3b52;   // fog / water tint
+// Fog / water tint. Pulled off cyan and darkened: 0x0d3b52 sat at hue 200° with
+// a lot of green in it, which is the colour of a lit swimming pool or a shallow
+// lagoon. Open ocean past the shelf scatters out the green long before it reaches
+// you — what's left is hue ~207 and considerably deeper.
+// Brightened 20% from 0x0a3149 — see the WATER.brightness note below, which
+// explains why all three water tints move together.
+export const DEEP_COLOR  = 0x0c3b58;
 export const SAND_COLOR  = '#c8ab7d';  // seabed
 export const FOG_DENSITY = 0.0135;     // loose enough to see the mountains
+
+// The water column you see when you look past the reef. Same shift off cyan as
+// DEEP_COLOR — the original top colour (0x3f9fcc) was a bright pool cyan, and
+// because the backdrop fills every gap in the scenery it set the mood more than
+// anything else did — then the same 20% brightening (from 0x256d94 / 0x020a11).
+export const BACKDROP = { top: 0x2c83b2, bottom: 0x020c14 };
+
+// ---- THE SURFACE, SEEN FROM UNDERNEATH -------------------------------------
+// Looking up from open ocean, the surface is not a pane of pale blue glass. Two
+// pieces of physics define it, and neither of them is colour:
+//
+//   SNELL'S WINDOW — light from the entire sky is refracted into a cone about
+//     48.6° wide directly overhead. Inside that cone you see the world above.
+//
+//   TOTAL INTERNAL REFLECTION — outside the cone the surface is a MIRROR, and
+//     the only thing down here for it to reflect is the dark water below.
+//
+// So a real surface reads as a bright, shimmering patch overhead that falls away
+// to near-black as your eye slides toward the horizon. The old water was a flat
+// 0x63c6ee at 30% opacity — evenly bright in every direction, no window, no
+// mirror. That evenness is the tell: it's what a pool looks like, lit from all
+// sides with a white floor two metres down and nothing dark to reflect.
+export const WATER = {
+  deep:   0x06202f,       // grazing: the mirror, reflecting the deep itself
+  window: 0x2f7ba4,       // overhead: sky through the window, still ocean-blue
+  glint:  0xa8dcf5,       // sun veins shimmering inside the window
+  opacity: [0.94, 0.52],  // [grazing, overhead] — a dark ceiling, a bright hole
+  // Overall luminance of the surface, applied in the shader. A multiplier rather
+  // than brighter hex values above, because `glint` is already at 245/255 blue and
+  // scaling it directly would clip it to flat white and throw away the tint.
+  //
+  // Three separate tints describe the water — this surface, BACKDROP's column, and
+  // DEEP_COLOR's fog — and they have to move together or the surface stops matching
+  // the water it sits on top of. All three are currently +20% over the values that
+  // came out of the deep-ocean pass; DEEP_COLOR and BACKDROP carry it baked into
+  // their hex, this one carries it here.
+  brightness: 1.2,
+};
 
 // Real rock is never one flat colour. Each instance draws from a palette of
 // natural tones — volcanic basalt, granite grey, sandstone brown, algae-dulled
@@ -55,9 +99,35 @@ export const PEBBLE_PALETTE = [
 // dolphin, whale and anglerfish rigs share that convention (their head bone sits
 // at +Z of the root in bind pose), so they all take the same Math.PI.
 // Rock colouring is per-instance and lives in props.js — see ROCK_PALETTE.
+//
+// twoSided : render BOTH faces of every triangle (THREE.DoubleSide).
+//   The loader used to force this on EVERYTHING, which meant all ~1.37 million
+//   seabed-prop triangles were rasterised twice — backface culling was simply
+//   switched off for the entire world. It is only actually needed for geometry
+//   you can see the inside of, and an audit of the .glb index buffers (welded by
+//   POSITION first — these models are flat-shaded and split vertices at every
+//   hard edge, so a naive index-based test calls a solid boulder 97% "open")
+//   says that is far fewer models than assumed:
+//
+//     - mountain, boulder, grass, kelp, Seaweed-3 look open, but 100% of their
+//       boundary edges sit in the bottom 10% of the model — they are closed
+//       shells with an open BASE, and the base is buried in the sand. Notably
+//       grass/kelp/Seaweed-3 are NOT the flat cards they look like.
+//     - kelp-tall, seaweed, rock-cluster, rock-large, pebbles, fish-bones are
+//       fully closed manifolds with consistent winding.
+//     - fern is genuine alpha-cut leaf cards (32% boundary edges) -> two-sided.
+//     - kelp-2 is closed but 47% of its edges are wound inconsistently, so
+//       culling would punch holes straight through it -> two-sided.
+//     - Every ANIMAL keeps it. Their fins are single-sided cards, and all the
+//       creatures together are only ~40k triangles, so there is nothing to win
+//       and a visibly finless dolphin to lose.
+//
+//   Net: 1.29M of the 2.75M rasterised prop triangles removed.
+//   If a prop ever looks hollow from some angle, add `twoSided: true` to its row
+//   here — that is the entire fix, no other file needs to change.
 export const MODELS = {
-  shark:    { url: 'assets/shark-animated.glb', targetSize: 6.0, rotY: Math.PI, anchorBottom: false },
-  fish:     { url: 'assets/fish.glb',         targetSize: 1.1,  rotY: Math.PI, anchorBottom: false },
+  shark:    { url: 'assets/shark-animated.glb', targetSize: 6.0, rotY: Math.PI, anchorBottom: false, twoSided: true },
+  fish:     { url: 'assets/fish.glb',         targetSize: 1.1,  rotY: Math.PI, anchorBottom: false, twoSided: true },
 
   // Animated reef fish — skinned rigs that SHOAL (fish.js), one AnimationMixer per
   // fish. Same Root/Spine/Tail/Face rig family as the shark and the dolphin, head
@@ -67,24 +137,27 @@ export const MODELS = {
   // simply invisible in the fog, so these sit in the same visual register as the
   // mid-water bait shoals — big enough to read as a species, small enough that the
   // shark still dwarfs them.
-  blueFish: { url: 'assets/blue_fish.glb',    targetSize: 0.95, rotY: Math.PI, anchorBottom: false },
-  clownFish:{ url: 'assets/clownFish.glb',    targetSize: 0.8,  rotY: Math.PI, anchorBottom: false },
-  fish2:    { url: 'assets/fish-2.glb',       targetSize: 1.15, rotY: Math.PI, anchorBottom: false },
+  blueFish: { url: 'assets/blue_fish.glb',    targetSize: 0.95, rotY: Math.PI, anchorBottom: false, twoSided: true },
+  clownFish:{ url: 'assets/clownFish.glb',    targetSize: 0.8,  rotY: Math.PI, anchorBottom: false, twoSided: true },
+  fish2:    { url: 'assets/fish-2.glb',       targetSize: 1.15, rotY: Math.PI, anchorBottom: false, twoSided: true },
 
   // animated wildlife — skinned rigs, one AnimationMixer each (see creatures.js)
-  dolphin:  { url: 'assets/Dolphin.glb',      targetSize: 5.0,  rotY: Math.PI, anchorBottom: false },
-  whale:    { url: 'assets/whale.glb',        targetSize: 21,   rotY: Math.PI, anchorBottom: false },
-  angler:   { url: 'assets/anglerfish.glb',   targetSize: 2.4,  rotY: Math.PI, anchorBottom: false },
+  dolphin:  { url: 'assets/Dolphin.glb',      targetSize: 5.0,  rotY: Math.PI, anchorBottom: false, twoSided: true },
+  whale:    { url: 'assets/whale.glb',        targetSize: 21,   rotY: Math.PI, anchorBottom: false, twoSided: true },
+  angler:   { url: 'assets/anglerfish.glb',   targetSize: 2.4,  rotY: Math.PI, anchorBottom: false, twoSided: true },
 
   // seabed flora
   grass:    { url: 'assets/grass.glb',        targetSize: 2.6,  rotY: 0, anchorBottom: true },
   kelp:     { url: 'assets/kelp.glb',         targetSize: 8.5,  rotY: 0, anchorBottom: true },
   kelpBush: { url: 'assets/kelp-tall.glb',    targetSize: 5.5,  rotY: 0, anchorBottom: true },
-  kelpFrond:{ url: 'assets/kelp-2.glb',       targetSize: 4.6,  rotY: 0, anchorBottom: true },
+  // kelp-2 is a closed mesh, but 47% of its edges are wound inconsistently, so
+  // backface culling would punch holes straight through it.
+  kelpFrond:{ url: 'assets/kelp-2.glb',       targetSize: 4.6,  rotY: 0, anchorBottom: true, twoSided: true },
   seaweed:  { url: 'assets/seaweed.glb',      targetSize: 4.5,  rotY: 0, anchorBottom: true },
   seagrass: { url: 'assets/Seaweed-3.glb',    targetSize: 3.0,  rotY: 0, anchorBottom: true },
   anemone:  { url: 'assets/sea-anemone.glb',  targetSize: 2.6,  rotY: 0, anchorBottom: true },
-  fern:     { url: 'assets/fern.glb',         targetSize: 3.4,  rotY: 0, anchorBottom: true },
+  // genuine alpha-cut leaf cards — the one plant that really is flat geometry
+  fern:     { url: 'assets/fern.glb',         targetSize: 3.4,  rotY: 0, anchorBottom: true, twoSided: true },
 
   // rock — coloured per instance from ROCK_PALETTE / MOUNTAIN_PALETTE
   boulder:  { url: 'assets/rock-boulder.glb', targetSize: 6.0,  rotY: 0, anchorBottom: true },
@@ -279,11 +352,19 @@ export const FISH = {
   // individually against their own body radius, so this is the formation's floor,
   // not the fish's.
   floorClear: 3,
-  // Scale bumped up across the three larger classes (fry stay fry — a bigger
-  // "cloud of fry" isn't the ask) and weight shifted toward those same
-  // classes, so bigger fish are both individually larger and more common.
+  // Scale bumped up across the three larger classes, and weight shifted toward
+  // those same classes, so bigger fish are both individually larger and more
+  // common. The fry class was then doubled too (0.3-0.5 -> 0.6-1.0): at the old
+  // size they were a few pixels of drifting speckle at any real distance, which
+  // read as dirt on the screen rather than as a cloud of small fish.
+  //
+  // That does put the top of the fry range (1.0) at the bottom of the next class
+  // (1.0-1.6), so the two now abut rather than leaving a gap. They still read as
+  // different: fry come 6-11 to a school in a tight 4.5-unit volume and flick their
+  // tails nearly twice as fast (`wobble` scales with 1/sqrt(size)), where the next
+  // class up is 8-14 fish spread over 7 units.
   classes: [
-    { scale: [0.3,  0.5], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [2.8, 1.7], weight: 2 },
+    { scale: [0.6,  1.0], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [2.8, 1.7], weight: 2 },
     { scale: [1.0,  1.6], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [2.1, 1.5], weight: 4 },
     { scale: [2.1,  3.0], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [1.6, 1.1], weight: 4 },
     { scale: [3.8,  5.0], count: [1,  2], spread: [11,  5.5, 11 ], speed: [1.2, 0.8], weight: 3 },
@@ -331,21 +412,118 @@ export const FISH = {
 
 export const ORBS = { count: 12, collectRadius: 2.2 };
 
-// Bubbles and marine snow are spread over a box sized off WORLD.half, so their
-// counts had to grow with its AREA (~2x) or the water would have gone visibly
-// clearer everywhere. Both are one draw call each no matter the count — these are
-// GPU-animated Points fields — so this is close to free. The wake is emitted at
-// the shark and doesn't care how big the world is.
+// Bubbles and marine snow are spread over a box sized off WORLD.half. Both are
+// one draw call each no matter the count — GPU-animated Points fields — and the
+// wake is emitted at the shark and doesn't care how big the world is.
+//
+// These counts USED to be scaled off world area (800 / 1350) on the reasoning
+// that one draw call and no CPU work makes them "close to free". That measured
+// the wrong thing. A particle field's cost is FILL: every sprite is alpha-blended
+// with depth-write off, which a tile-based GPU cannot occlusion-cull, and a
+// bubble a metre from the camera covers a large slab of screen. Area is the wrong
+// scaling law anyway — the particles that sell the water are the near ones, and
+// how many of those you see doesn't depend on how big the world is.
+//
+// Halved to 350 / 700. Tune freely: this is the most subjective number in the
+// Phase 1 pass, and it is one edit away from being restored.
 export const PARTICLES = {
-  bubbles: { count: 800, size: 0.55, opacity: 0.6 },
-  snow:    { count: 1350, size: 0.16, opacity: 0.42 },
+  bubbles: { count: 350, size: 0.55, opacity: 0.6 },
+  snow:    { count: 700, size: 0.16, opacity: 0.42 },
   wake:    { count: 150, size: 0.3,  opacity: 0.5 },
 };
 
 // Also spread off WORLD.half, but unlike the particles each shaft is its own mesh,
-// so this count IS the draw-call count. 30 is still nothing next to the ~24 the
-// entire seabed costs.
-export const GOD_RAYS = { count: 30 };
+// so this count IS the draw-call count — AND its own cloned ShaderMaterial.
+//
+// Cut 30 -> 10. Draw calls were never the problem: each shaft is a 24-36 unit tall
+// additive quad and the camera lives INSIDE the volume, so a shaft routinely
+// covers a big fraction of the screen. Thirty of them stack thirty layers of
+// blended fill that no tile-based GPU can occlusion-cull. At 0.16 peak alpha the
+// difference between 10 and 30 is mostly invisible; the fill cost is 3x.
+export const GOD_RAYS = {
+  count: 10,
+  // Shafts are now ONE InstancedMesh with the billboard done in the vertex
+  // shader, so `count` no longer costs draw calls or materials — only fill. It
+  // also means a shaft can fade itself out by distance, which the 10 separate
+  // meshes could not: [fadeNear, fadeFar] in world units from the camera. Past
+  // fadeFar a shaft contributes literally nothing, and at FOG_DENSITY 0.0135 it
+  // was contributing about 2% of its colour anyway.
+  fade: [70, 135],
+};
+
+// ============================================================
+//  PERFORMANCE DIALS
+//  Everything here trades image quality for frame time. These are the knobs a
+//  quality-tier system (PERFORMANCE.md §7) would eventually drive; for now they
+//  are hand-set to the "Medium/High" values.
+// ============================================================
+export const PERF = {
+  // ---- frame cap ----
+  // Hard ceiling on rendered frames per second (0 = uncapped, run as fast as the
+  // display allows). There is nothing to gain above 60 here: the simulation is
+  // time-based, so extra frames buy no responsiveness, and every one of them is a
+  // full GPU frame — on a 120 Hz panel an uncapped loop draws twice the work for a
+  // difference nobody is looking for, which on a laptop is just heat and battery.
+  targetFps: 60,
+
+  // ---- prop chunking (§3.3) ----
+  // Each PROPS row used to be ONE InstancedMesh spanning r=0..115, so its
+  // bounding sphere covered the whole world and frustum culling could only ever
+  // be all-or-nothing — which is why it was switched off, and why 1.38M prop
+  // triangles were submitted every frame including everything behind the camera.
+  // Rows are now split into a grid of cells, each its own InstancedMesh with a
+  // tight bounding sphere. Draw calls go up; submitted triangles fall by 3-5x.
+  //
+  // Target TRIANGLES per chunk, not instances — those give very different answers.
+  // 17 driftwood logs and 84 canopy kelp bushes are both "a row", but the logs are
+  // 5k triangles and the kelp is 289k: chunking the logs buys nothing and costs 8
+  // draw calls, while chunking the kelp is the biggest geometry win on the table.
+  // So the cell size is derived from this budget and the row's own ring area, and
+  // cheap rows stay a single chunk. Lower = better culling, more draw calls.
+  //
+  // Swept against the real GLB triangle counts over 6,000 randomised camera poses
+  // (mean prop triangles submitted per frame, out of 1.375M in the world):
+  //
+  //     budget   chunks   calls/frame   tris/frame   cut
+  //     none         24            24        1.37M    0%
+  //     25000       170            78         783k   43%
+  //     12000       260           107         636k   54%
+  //      8000       311           119         591k   57%   <- here
+  //      5000       357           131         553k   60%
+  //      3000       428           144         489k   64%
+  //
+  // 8000 is where the curve flattens: everything past it buys a couple of percent
+  // per 15 extra draw calls. 119 draw calls is nothing on any GPU this targets —
+  // the metric that was actually hurting is triangles submitted.
+  chunkTriangles: 8000,
+  // ...floored at this many instances per chunk, so a row of a few heavy props
+  // can't shatter into one draw call each.
+  minPropsPerChunk: 5,
+  // Hard distance cull, matched to the fog. FogExp2 transmittance is exp(-(d·ρ)²),
+  // so at 120 units a prop is showing 7% of its colour through the haze and is not
+  // worth a triangle. Measured to the NEAR EDGE of a chunk's sphere, never its
+  // centre — which is also why this never touches the mountains: their row is a
+  // single chunk 128 units in radius, so its near edge is always within range and
+  // the range silhouette survives. Only the small, numerous, far rows get cut.
+  propCull: 120,
+  // 'lambert' | 'standard'. Every prop material arrives from GLTFLoader as
+  // MeshStandardMaterial — a full Cook-Torrance BRDF against 3 lights, per
+  // fragment, with metalness forced to 0 and no environment map to reflect. On
+  // ~1.4M triangles of fogged rock and foliage, Lambert's diffuse-only lighting
+  // is a large fragment-ALU saving for a difference that is genuinely hard to
+  // see. Flip to 'standard' if the rock looks too flat.
+  propMaterial: 'lambert',
+
+  // ---- animation mixers (§4.3) ----
+  // Each AnimationMixer does keyframe interpolation, writes every bone transform,
+  // then Skeleton.update() rebuilds every bone matrix and re-uploads a bone
+  // texture. 22 of those ran every frame. You cannot see a clownfish's tail beat
+  // through fog at 50 metres, so: full rate inside `mixerNear`, `mixerFarHz`
+  // beyond it, frozen entirely past `mixerFar`. The shark always runs full rate.
+  mixerNear: 45,
+  mixerFar: 100,
+  mixerFarHz: 20,
+};
 
 // Three always-on loops (deep ambience, a bubbling texture, and a distant
 // whale) plus a fourth loop whose volume/rate track the shark's speed, so
@@ -353,9 +531,13 @@ export const GOD_RAYS = { count: 30 };
 // [atRest, atMaxSpeed] pairs for the swim loop; a flat number for everything
 // else.
 export const AUDIO = {
-  ambience: { url: 'assets/audio/deep-ocean-ambience.mp3', volume: 0.65 },
+  // Both ambient beds came up: the deep-ocean layer by ~30% (0.65 -> 0.85) and the
+  // distant whale by ~60% (0.29 -> 0.46). They were mixed against each other rather
+  // than against the room, and at the old levels the whale in particular was under
+  // the threshold where you notice it at all.
+  ambience: { url: 'assets/audio/deep-ocean-ambience.mp3', volume: 0.85 },
   bubbles:  { url: 'assets/audio/bubbles-ambience.ogg',    volume: 0.16 },
-  whale:    { url: 'assets/audio/whale_sound.mp3',         volume: 0.29 },
+  whale:    { url: 'assets/audio/whale_sound.mp3',         volume: 0.46 },
   swim:     { url: 'assets/audio/shark_movement.mp3', volume: [0.05, 0.45], rate: [0.8, 1.5] },
   fishFlee: { url: 'assets/audio/fish-flee.mp3', volume: 0.35, cooldown: 4 },   // min seconds between plays
   collect:  { url: 'assets/audio/orb-collect.mp3', volume: 0.3 },

@@ -5,6 +5,7 @@ import { scene } from './core.js';
 import { floorAt } from './terrain.js';
 import { ringRadius, clampRadius } from './placement.js';
 import { resolveBody } from './collision.js';
+import { tickMixer } from './mixers.js';
 
 // ============================================================
 //  WILDLIFE  — animated skinned rigs that roam on their own.
@@ -239,6 +240,8 @@ export function updateCreatures(dt, sharkPos) {
       pos.y = Math.max(pos.y, floorAt(pos.x, pos.z, c.clearance));
     }
 
-    if (c.mixer) c.mixer.update(dt);
+    // Distance-gated (mixers.js). halfLength is passed as slack so the whale —
+    // 21 units nose to tail — is judged by how close its BODY is, not its pivot.
+    tickMixer(c, dt, pos, c.halfLength);
   }
 }

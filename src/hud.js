@@ -14,6 +14,7 @@ const el = {
   controls: document.getElementById('controls'),
   dive:     document.getElementById('dive'),
   mute:     document.getElementById('mute'),
+  perf:     document.getElementById('perf'),
 };
 
 // Cache the last values so we only touch the DOM when the text actually changes
@@ -35,6 +36,34 @@ export function setSpeed(speed) {
 
 export function setOrbs(collected, total) {
   el.orbs.textContent = `${collected} / ${total}`;
+}
+
+// ---- PERF READOUT ----------------------------------------------------------
+// Off by default, toggled with F3 (or ` if the browser eats F3). The point of
+// having it is the one in PERFORMANCE.md §1: every optimisation should be
+// accepted or rejected on a number, and the number that matters is ms/frame —
+// not fps, which compresses exactly where you need resolution (55 -> 60 fps is
+// 1.5 ms, 20 -> 25 fps is 10 ms).
+//
+// The CPU figure is updateWorld() alone. Read it against the total: if the frame
+// is 20 ms and CPU is 2 ms, you are GPU-bound and no amount of JS tuning helps.
+let perfOn = false;
+
+export function isPerfVisible() {
+  return perfOn;
+}
+
+export function setPerf(text) {
+  el.perf.textContent = text;
+}
+
+export function wirePerfToggle() {
+  addEventListener('keydown', (e) => {
+    if (e.code !== 'F3' && e.code !== 'Backquote') return;
+    e.preventDefault();          // F3 is "find again" in most browsers
+    perfOn = !perfOn;
+    el.perf.classList.toggle('hidden', !perfOn);
+  });
 }
 
 export function showControls() {

@@ -5,6 +5,7 @@ import { scene } from './core.js';
 import { floorAt } from './terrain.js';
 import { ringRadius, clampRadius } from './placement.js';
 import { resolveSolids } from './collision.js';
+import { tickMixer } from './mixers.js';
 
 // ============================================================
 //  SHOALS  — a school holds station around a wandering centre,
@@ -232,7 +233,10 @@ export function updateSchools(dt, t, sharkPos) {
       m.obj.rotation.z = s.animated
         ? Math.sin(t * 0.9 * m.wobble + m.phase) * 0.07
         : Math.sin(t * 7 * m.wobble + m.phase) * 0.1;
-      if (m.mixer) m.mixer.update(dt);
+      // Distance-gated: full rate up close, 20 Hz mid-range, frozen past the fog
+      // horizon. See mixers.js — most of the school is not worth a bone-texture
+      // upload every frame.
+      tickMixer(m, dt, p);
     }
   }
   return fleeing;
