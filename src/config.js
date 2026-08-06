@@ -59,6 +59,18 @@ export const MODELS = {
   shark:    { url: 'assets/shark-animated.glb', targetSize: 6.0, rotY: Math.PI, anchorBottom: false },
   fish:     { url: 'assets/fish.glb',         targetSize: 1.1,  rotY: Math.PI, anchorBottom: false },
 
+  // Animated reef fish — skinned rigs that SHOAL (fish.js), one AnimationMixer per
+  // fish. Same Root/Spine/Tail/Face rig family as the shark and the dolphin, head
+  // bone at +Z in bind pose, so they take the same Math.PI.
+  // targetSize is the fish's LENGTH in world units next to a 6-unit shark. Held
+  // near 1 deliberately: true-to-life a clownfish would be a tenth of that and
+  // simply invisible in the fog, so these sit in the same visual register as the
+  // mid-water bait shoals — big enough to read as a species, small enough that the
+  // shark still dwarfs them.
+  blueFish: { url: 'assets/blue_fish.glb',    targetSize: 0.95, rotY: Math.PI, anchorBottom: false },
+  clownFish:{ url: 'assets/clownFish.glb',    targetSize: 0.8,  rotY: Math.PI, anchorBottom: false },
+  fish2:    { url: 'assets/fish-2.glb',       targetSize: 1.15, rotY: Math.PI, anchorBottom: false },
+
   // animated wildlife — skinned rigs, one AnimationMixer each (see creatures.js)
   dolphin:  { url: 'assets/Dolphin.glb',      targetSize: 5.0,  rotY: Math.PI, anchorBottom: false },
   whale:    { url: 'assets/whale.glb',        targetSize: 21,   rotY: Math.PI, anchorBottom: false },
@@ -247,7 +259,9 @@ export const SHARK = {
 //   speed  : [base, extra] cruise speed — mass costs acceleration, so big is slow
 //   weight : relative odds of a school drawing this class
 export const FISH = {
-  schools: 7,       // ~54 fish, and each one is its own draw call — don't overdo it
+  // ~54 fish, and each one is its own draw call — don't overdo it. `species` below
+  // adds another 9-24 fish on top, at three draw calls each.
+  schools: 7,
   fleeRadius: 20, fleeSpeedMul: 2.8, fleeDistance: 30,
   // Shoals range this × WORLD.half. Cut from 1.1 when the world grew: as a
   // FRACTION it would have scaled with the bound and scattered the same 7 schools
@@ -256,6 +270,15 @@ export const FISH = {
   // leaves the far water to the mountains and the kelp canopy — which is where
   // shoals belong anyway. Bait fish hold to the reef, not the open ocean.
   roam: 0.85,
+  // Default depth band, as [low, high] fractions of the water column — 0 = mean
+  // seabed, 1 = surface, the same convention CREATURES uses. This pair reproduces
+  // the seabed+6 .. surface-6 range these shoals have always had: mid-water, which
+  // is where generic bait fish belong. A species row can override it.
+  band: [0.18, 0.82],
+  // How far a school's CENTRE stays off the dunes. Members hang below it and clamp
+  // individually against their own body radius, so this is the formation's floor,
+  // not the fish's.
+  floorClear: 3,
   // Scale bumped up across the three larger classes (fry stay fry — a bigger
   // "cloud of fry" isn't the ask) and weight shifted toward those same
   // classes, so bigger fish are both individually larger and more common.
@@ -264,6 +287,45 @@ export const FISH = {
     { scale: [1.0,  1.6], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [2.1, 1.5], weight: 4 },
     { scale: [2.1,  3.0], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [1.6, 1.1], weight: 4 },
     { scale: [3.8,  5.0], count: [1,  2], spread: [11,  5.5, 11 ], speed: [1.2, 0.8], weight: 3 },
+  ],
+  // ---- NAMED SPECIES ----
+  // The `classes` above are all the same untextured salmon at N scales, moved by a
+  // procedural tail flick. These rows are real skinned rigs playing their own swim
+  // clip, so the school genuinely swims. That costs an AnimationMixer per fish and
+  // one draw call per material (three each, and they can't be merged or instanced —
+  // a skinned mesh has to keep its own node), which is exactly why they come in
+  // ones and twos of three or four: a species you happen upon is an encounter, a
+  // species that's everywhere is wallpaper.
+  //   model   : MODELS key
+  //   schools : [min, max] schools of this species, inclusive — NOT the [min, extra]
+  //             pair `count` uses
+  //   clip    : clip name in the GLB; falls back to the file's first clip
+  //   rate    : clip timeScale, jittered per fish. The source clips are all ~1.3 s
+  //             per tail cycle, which is a whale's tempo — small fish need >2 to
+  //             beat at anything like their own frequency.
+  //   band    : overrides FISH.band — where in the column this species lives
+  //   floorClear: overrides FISH.floorClear — a bottom species needs a small one,
+  //             or the band still leaves it hovering above the plants it lives in
+  //   scale / count / spread / speed all read exactly as in `classes`, except
+  //   `count` is deliberately tiny: these are tight little shoals, not clouds.
+  //
+  // The clownfish and the blue fish are REEF fish: they hold to the bottom few
+  // metres, in among the seagrass, the ferns and the boulders, rather than crossing
+  // open mid-water like the bait shoals. They're layered rather than sharing one
+  // slab — the clownfish lowest, down at anemone height, the blue fish just above
+  // it — so meeting both doesn't read as one mixed school. Fleeing keeps them in
+  // that band too (fish.js), so they scatter along the reef instead of breaking for
+  // the surface. fish-2 keeps the default mid-water band, which leaves a visible
+  // difference in habit between the three.
+  species: [
+    { model: 'blueFish',  schools: [1, 2], count: [3, 1], scale: [1.0, 1.4],
+      spread: [3.4, 1.6, 3.4], speed: [2.4, 1.3], clip: 'Armature|Swim.001', rate: 2.2,
+      band: [0.06, 0.28], floorClear: 1.8 },
+    { model: 'clownFish', schools: [1, 2], count: [3, 1], scale: [0.9, 1.3],
+      spread: [3.0, 1.4, 3.0], speed: [2.6, 1.4], clip: 'Armature|Swim',     rate: 2.6,
+      band: [0.02, 0.18], floorClear: 1.6 },
+    { model: 'fish2',     schools: [1, 2], count: [3, 1], scale: [1.0, 1.4],
+      spread: [3.6, 1.7, 3.6], speed: [2.2, 1.2], clip: 'Armature|Swim',     rate: 2.0 },
   ],
 };
 

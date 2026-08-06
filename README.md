@@ -49,7 +49,7 @@ shark-game/
 │   ├── collision.js  # the rock/mountain solids nothing can swim through
 │   ├── loader.js     # GLB load, scale/orientation normalize, mesh merging
 │   ├── props.js      # scatter placement + per-instance rock weathering
-│   ├── fish.js       # shoaling and fleeing, by size class
+│   ├── fish.js       # shoaling and fleeing — size classes + animated species
 │   ├── creatures.js  # roaming animated wildlife (whale, dolphins, anglerfish)
 │   ├── orbs.js       # collectibles
 │   ├── shark.js      # rig, handling, swim clip, chase camera
@@ -82,6 +82,10 @@ All knobs live at the top of `main.js`:
   what depth band it keeps to, how fast and how tightly it turns, and how shy it
   is of the shark.
 - `FISH.classes` — the shoal size classes, from fry to lone lunkers.
+- `FISH.species` — the named animated shoals (blue fish, clownfish, fish-2). Same
+  row shape as a class, plus the `clip`/`rate` that make it swim itself, a
+  `schools: [min, max]` count instead of a weighted roll, and an optional
+  `band`/`floorClear` for a species that keeps to the bottom rather than mid-water.
 - `seabedHeight(x, z)` — the single height field used for **both** the sand mesh
   and prop placement, so nothing floats or sinks. The shark and camera are
   clamped against it too.
@@ -172,6 +176,26 @@ All knobs live at the top of `main.js`:
   — those all track body size in the same direction. Tail-beat rate divides by
   `√size`, so a fry flickers and a lunker makes slow strokes; without that the
   whole reef looks like one animation played back at N different scales.
+- **Shoals keep to a depth band.** `FISH.band` (and per-species overrides) is a
+  `[low, high]` pair of water-column fractions, 0 = mean seabed, 1 = surface — the
+  same convention `CREATURES` uses. It governs waypoints *and* the panic target, so
+  a reef species scatters along the bottom instead of breaking for the surface and
+  then sinking home for ten seconds. `floorClear` is the matching floor for the
+  formation's centre; the band alone still leaves a "bottom" species hovering three
+  units up, above most of the plants it's supposed to live in. Members clamp against
+  the dunes individually too, because one hanging at the bottom of the formation with
+  its bob at full stretch sits a good unit under the centre.
+- **A shoal's flee vector is damped in Y.** Dived on from above, the raw
+  away-from-the-shark direction points at the sand, and the shoal spends its escape
+  pressed into the floor clamp. Scattering sideways is both what a real shoal does
+  and the only thing that actually works.
+- **`FISH.species` are shoals of real animated rigs** (`blue_fish`, `clownFish`,
+  `fish-2`) on top of those generic classes: same steering, but each fish is a
+  skinned clone with its own `AnimationMixer`, so it swims instead of being wagged.
+  A skinned mesh can't be merged *or* instanced, so each one costs a draw call per
+  material — three each — which is why a species gets only one or two schools of
+  three to four. The procedural body roll drops to a slow bank for these: stacked
+  on top of a real tail beat, the bait fish's 7 Hz flick reads as a convulsion.
 - Static props with more than 3 mesh nodes are merged to one mesh per material
   at load (`mergeByMaterial`). `kelp-tall.glb` ships as 21 nodes, which would
   otherwise cost 21 draw calls on every single clone.
@@ -196,8 +220,8 @@ All knobs live at the top of `main.js`:
   the texture and a near-black tint would erase all its baked detail.
 
 **If anything swims tail-first**, flip that model's `rotY`. The shark, dolphin,
-whale and anglerfish rigs all have their head bone at `+Z` in bind pose, so they
-all take `rotY: Math.PI`. If a model renders belly-up, set
+whale, anglerfish and the three reef-fish rigs all have their head bone at `+Z` in
+bind pose, so they all take `rotY: Math.PI`. If a model renders belly-up, set
 `rotGroup.rotation.z = Math.PI` in `loadModel`.
 
 ## Asset credits
@@ -219,7 +243,8 @@ Sourced from [Poly Pizza](https://poly.pizza/):
 in the project — check their original sources for licence terms before shipping.
 
 **Unattributed.** `Dolphin.glb`, `whale.glb`, `anglerfish.glb`, `fern.glb`,
-`pebbles.glb`, `fish-bones.glb`, `kelp-2.glb` and `Seaweed-3.glb` were dropped
-into `assets/` without a source recorded. Fill in their authors and licences
+`pebbles.glb`, `fish-bones.glb`, `kelp-2.glb`, `Seaweed-3.glb`, `blue_fish.glb`,
+`clownFish.glb` and `fish-2.glb` were dropped into `assets/` without a source
+recorded. Fill in their authors and licences
 before shipping — the table above is the attribution the CC-BY models require,
 and these aren't covered by it.

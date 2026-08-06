@@ -33,7 +33,7 @@ export async function buildWorld() {
 
   createShark(models.shark);
   scatterAll(PROPS, models);
-  createSchools(models.fish);
+  createSchools(models);
   createCreatures(models);
   createOrbs();
 
