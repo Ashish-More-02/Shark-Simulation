@@ -795,11 +795,18 @@ export const AUDIO = {
   swim:     { url: 'assets/audio/shark_movement.mp3', volume: [0.05, 0.45], rate: [0.8, 1.5] },
   collect:  { url: 'assets/audio/orb-collect.mp3', volume: 0.3 },
   splash:   { url: 'assets/audio/shark_drop_into_ocean.wav', volume: 0.36 },
-  // No bite sample ships with the game, so the jaw snap is the splash played
-  // short and fast — at 2.4x it reads as a water-muffled chomp rather than as
-  // the entry splash it started life as. `rate` is a plain playbackRate here
-  // (the [min,max] pair form is the swim loop's alone).
-  bite:     { url: 'assets/audio/shark_drop_into_ocean.wav', volume: 0.2, rate: 2.4 },
+  // A bubble gush, not a jaw snap. The snap was the obvious read for "bite" and
+  // it was wrong: a dry mouth-close has no water in it, so underwater it lands as
+  // a person chewing in air. What actually sells a bite at depth is the volume of
+  // water the jaws displace — a muffled impact, then a burst of bubbles churning
+  // and rising. So this is three layers: water impact under 2.2kHz for the chomp,
+  // a continuous gush behind it, and discrete bubble pops on top for texture.
+  // The global low-pass sits at 7kHz, NOT lower: small bubbles resonate up around
+  // 2-6kHz, so filtering down to a "murky" 3kHz kills the exact band that makes
+  // them read as bubbles and leaves a dull whump. 0.5s, spent by 460ms.
+  // The [min,max] rate spread is per-play pitch jitter — identical chomps back to
+  // back are what made the old one grating, and +/-8% is enough to break that up.
+  bite:     { url: 'assets/audio/shark_bite.mp3', volume: 0.45, rate: [0.92, 1.08] },
   // And the swallow reuses the orb chime, pitched down so eating a whale doesn't
   // sound identical to picking up a blob. Halved from 0.34: it fires on every
   // single fish, so anything that reads as a "ping" the first time reads as

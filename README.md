@@ -266,6 +266,21 @@ Sourced from [Poly Pizza](https://poly.pizza/):
 `fish.glb`, `grass.glb`, `log.glb`, `sea-anemone.glb` and the shark were already
 in the project — check their original sources for licence terms before shipping.
 
+### Audio
+
+`shark_bite.mp3` was built here from three **CC0 1.0** (public domain) Freesound
+recordings — layered, low-passed at 7kHz, and trimmed to 0.5s. No attribution is
+required, but the sources are:
+
+| Layer | Sound | Author |
+|-------|-------|--------|
+| water impact (the chomp) | [WATRImpt_Impact12](https://freesound.org/s/718503/) | InMotionAudio |
+| bubble gush (the body) | [Water Explosion](https://freesound.org/s/519008/) | Sheyvan |
+| bubble pops (the texture) | [multiple bubbles bursting](https://freesound.org/s/683100/) | florianreichelt |
+
+The other audio files were in the project already — check their sources before
+shipping.
+
 **Unattributed.** `Dolphin.glb`, `whale.glb`, `anglerfish.glb`, `fern.glb`,
 `pebbles.glb`, `fish-bones.glb`, `kelp-2.glb`, `Seaweed-3.glb`, `blue_fish.glb`,
 `clownFish.glb` and `fish-2.glb` were dropped into `assets/` without a source

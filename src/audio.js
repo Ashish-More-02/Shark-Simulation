@@ -41,9 +41,11 @@ function playOnce(cfg) {
   const el = pool.els[pool.next];
   pool.next = (pool.next + 1) % POOL_SIZE;
   el.volume = cfg.volume;
-  // Two one-shots share the splash file and two share the orb chime, at different
-  // rates — so the rate has to be set per PLAY, not once per element.
-  el.playbackRate = cfg.rate || 1;
+  // Two one-shots share the orb chime at different rates — so the rate has to be
+  // set per PLAY, not once per element. A [min,max] pair asks for a fresh random
+  // rate every play, which is how the bite avoids sounding like a loop.
+  const r = cfg.rate;
+  el.playbackRate = Array.isArray(r) ? r[0] + Math.random() * (r[1] - r[0]) : (r || 1);
   el.muted = muted;
   el.currentTime = 0;          // rewind — this element may still be playing
   el.play().catch(() => {});   // ignore autoplay rejection outside a user gesture
