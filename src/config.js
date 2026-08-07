@@ -277,21 +277,46 @@ export const PROPS = [
 //             Match the material EXACTLY: anglerfish.glb has both "Light" (the
 //             bioluminescent bulb) and "Anglerfish_Light" (the dark brown stalk
 //             holding it), and a substring match would set the stalk alight too.
+//   name    : what the bite readout calls it
+//   bites   : how many snaps it takes to eat (prey.js). Mass, essentially — a
+//             whale is not something you swallow on the first pass.
+//   points  : growth credited when it finally goes down. Read against
+//             SHARK.growthFull, so these are shares of the whole size curve.
+//
+// ---- COUNTS AND RINGS ARE SIZED FOR HUNTING, NOT FOR SCENERY ----------------
+// These rows were originally tuned as set pieces: one whale, kept deliberately
+// out past the reef at r=48..72, was "a silhouette you notice in the blue rather
+// than something crossing the middle of the play area". That is the right call
+// for background wildlife and the wrong one the moment the whale is worth 10
+// bites and 70 growth points — one animal in a 9,000-square-unit annulus, seen
+// through fog you cannot see 50 units through, is a needle the player is being
+// asked to find. Same story for 2 fleeing dolphins over 13,500 square units and
+// 3 anglerfish 2.4 units long down in the dark.
+//
+// So the counts are up and the rings are pulled in toward the water the shark
+// actually patrols. SIZES ARE UNTOUCHED — sMin/sMax here and targetSize in
+// MODELS are exactly what they were; this is about where they are and how many,
+// not how big.
+//
+// Cost: 6 skinned rigs becomes 11. Each one is an AnimationMixer, but they are
+// distance-gated (PERF.mixerNear/Far), so the ones out in the fog are frozen and
+// the extras are close to free until you swim up to them.
 export const CREATURES = [
-  // The whale keeps to the open water beyond the reef — a silhouette you notice
-  // out in the blue, not something crossing the middle of the play area.
-  { model: 'whale',   count: 1, sMin: 0.92, sMax: 1.06, band: [0.42, 0.78],
-    ring: [48, 72], clip: 'Armature|Swim',
-    rate: 0.34, speed: 2.4, turn: 0.28, dwell: [10, 8], shy: 0 },
+  { model: 'whale',   count: 2, sMin: 0.92, sMax: 1.06, band: [0.42, 0.78],
+    ring: [30, 68], clip: 'Armature|Swim',
+    rate: 0.34, speed: 2.4, turn: 0.28, dwell: [10, 8], shy: 0,
+    name: 'Whale', bites: 10, points: 70 },
 
-  { model: 'dolphin', count: 2, sMin: 0.85, sMax: 1.08, band: [0.5, 0.95],
-    ring: [8, 66], clip: 'Armature|Swim',
-    rate: 1.15, speed: 5.4, turn: 1.5, dwell: [3, 3], shy: 0.35 },
+  { model: 'dolphin', count: 4, sMin: 0.85, sMax: 1.08, band: [0.5, 0.95],
+    ring: [8, 52], clip: 'Armature|Swim',
+    rate: 1.15, speed: 5.4, turn: 1.5, dwell: [3, 3], shy: 0.35,
+    name: 'Dolphin', bites: 3, points: 14 },
 
-  { model: 'angler',  count: 3, sMin: 0.7, sMax: 1.35, band: [0.02, 0.22],
-    ring: [12, 70], clip: 'Fish_Armature|Swimming_Normal',
+  { model: 'angler',  count: 5, sMin: 0.7, sMax: 1.35, band: [0.02, 0.22],
+    ring: [10, 54], clip: 'Fish_Armature|Swimming_Normal',
     rate: 0.85, speed: 1.4, turn: 0.8, dwell: [6, 6], shy: 0.5,
-    glow: { material: 'Light', color: 0x9df0ff, intensity: 2.6 } },
+    glow: { material: 'Light', color: 0x9df0ff, intensity: 2.6 },
+    name: 'Anglerfish', bites: 1, points: 3 },
 ];
 
 // Shark handling + the baked swim clip. tailRate* are timeScale multipliers for
@@ -320,6 +345,84 @@ export const SHARK = {
   // nose visibly buries itself before anything pushes back.
   bodyRadius: 1.15,
   bodyHalfLength: 2.3,
+
+  // ---- GROWTH -------------------------------------------------------------
+  // Eating scales the shark up. EVERY length in the block above is multiplied by
+  // the current scale at use (shark.js): body radius, half length, floor
+  // clearance, the surface ceiling, the camera offset, the bite reach. Growing
+  // the model without growing those would put a 12-unit shark's nose inside the
+  // rock its collider still thinks is 6 units away, and leave the chase camera
+  // buried in its own dorsal fin.
+  //
+  // maxScale is set FROM the whale: MODELS.shark.targetSize (6.0) x 2.1 = 12.6
+  // world units against the whale's targetSize of 21 — so a fully grown shark is
+  // 40% shorter than the biggest thing in the ocean, and stays that way.
+  maxScale: 2.1,
+  // ---- WHY THE CAMERA IS NOT IN THAT LIST ----
+  // How much of the shark's growth the chase camera follows. This started at 1
+  // (offset scaled with the animal, "or a fully grown shark fills the screen with
+  // its own back") and that was flatly wrong: scaling the camera by the SAME
+  // factor as the shark holds its SCREEN size constant, which is the one thing
+  // that cannot stay constant if growth is going to read as growth. With nothing
+  // else to compare against, the eye concludes the fish got smaller — you can't
+  // see your own scale, only the ratio between you and the frame.
+  //
+  //   0    the offset never moves. A 2.1x shark is 2.1x bigger on screen, and the
+  //        kelp and the boulders it now dwarfs sell it. This is the default.
+  //   0.3  a compromise: the camera drifts back to 1.33x while the shark goes to
+  //        2.1x, so it still grows 1.6x on screen but leaves more view ahead.
+  //   1    the old behaviour — the shark appears never to change size at all.
+  //
+  // At 0 and full size the geometry still works: the tail tip reaches 6.3 units
+  // behind the pivot and the camera sits 8.5 back, so there is 2.2 units of
+  // clearance and nothing clips. It IS a lot of shark in frame — that's the point
+  // — so raise this if it crowds the view.
+  camGrowth: 0,
+  // Points for maxScale. Clearing the entire reef once — ~65 shoaling fish, the
+  // 5 anglers, 4 dolphins, both whales and all 12 orbs — comes to 348, which is
+  // 87% of this: the last stretch has to come from the 60-second respawns, so
+  // maxing out means hunting the reef through a second pass rather than
+  // vacuuming it up once.
+  //
+  // Moved 280 -> 400 when the CREATURES counts went up for findability. The
+  // wildlife carries 211 of those 348 points, so leaving this at 280 would have
+  // meant hitting maximum size well before you had seen most of the reef.
+  //
+  // What matters more than the total is the per-fish step it implies: a 1-point
+  // bait fish moves the scale by 1/400 of the 1.1 range, which is 0.003 — 1.7 cm
+  // on a 6-metre shark. Invisible per fish, exactly as intended; you only notice
+  // it when the kelp you used to swim through starts brushing your flank.
+  growthFull: 400,
+  // Seconds for the scale to catch up to the points. Purely cosmetic damping, so
+  // a whale's 70 points swell in over a moment instead of snapping.
+  growthLag: 1.2,
+};
+
+// ---- BITING ----------------------------------------------------------------
+// Left click snaps the jaws. The hit test is a single sphere-vs-body query per
+// click against the prey registry (prey.js) — no per-frame cost at all, which is
+// why the reach can afford to be generous.
+export const BITE = {
+  cooldown: 0.4,        // seconds between snaps
+  snap: 0.22,           // head-snap animation length
+  lunge: 3.2,           // forward speed impulse, so a bite is also a pounce
+  // Both scale with the shark. mouthAhead puts the bite sphere at the nose
+  // rather than at the pivot in the middle of the body.
+  mouthAhead: 2.9,
+  reach: 3.4,           // hit radius around the mouth, plus the prey's own girth
+  // Prey has to be roughly in front of the jaws: cos of the cone's half-angle.
+  // 0.45 is ~63°, wide enough that fish fleeing sideways are still catchable.
+  coneCos: 0.45,
+  // ...except inside this distance, where it's simply in your mouth and the
+  // angle stops mattering. Without it, a fish pressed against the shark's cheek
+  // is unbiteable because the direction to it is nearly perpendicular.
+  gape: 1.8,
+  // Every eaten animal comes back exactly this many seconds later — fish at
+  // their school's centre, wildlife at a fresh waypoint well away from the shark
+  // so nothing pops into existence in front of you.
+  respawn: 60,
+  // The blobs are pure bonus growth: no bites, no chase, just points.
+  orbPoints: 6,
 };
 
 // Shoaling fish. A reef isn't one size of fish repeated — it's clouds of fry,
@@ -329,13 +432,116 @@ export const SHARK = {
 //   scale  : [min, max] multiplier on the normalized fish model
 //   count  : [min, extra] members per school
 //   spread : school volume the members hold station in
-//   speed  : [base, extra] cruise speed — mass costs acceleration, so big is slow
+//   speed  : [base, extra] cruise speed. BOTH halves of the pair move together, so
+//            the mean (base + extra/2) is what changes and the spread inside a class
+//            widens with it — scaling only `base` would quietly squeeze the variety
+//            out of a class as it got faster.
+//
+//            "Mass costs acceleration, so big is slow" was the original rule, and
+//            taken literally it put the two larger classes at means of 1.6 and 2.15
+//            — which does not read as a heavy fish, it reads as a dying one. The
+//            whole population now sits in a 3.2-4.6 band: size still orders them,
+//            but across a ~1.4x spread rather than a ~2.9x one. Cumulative change
+//            from the original values:
+//
+//              fry        3.65 -> 6.40   +75%
+//              mid-water  2.85 -> 6.30  +121%
+//              large      2.15 -> 5.50  +156%
+//              lunkers    1.60 -> 4.70  +194%
+//
+//            Worth knowing where this stops being the answer: the shark's own cruise
+//            equilibrium is accel/drag = 12.2, so bait fish at a 6.4 mean are already
+//            over half the speed of the thing hunting them. Past roughly here, more
+//            speed makes them un-huntable rather than livelier — which is why the
+//            tail beat (FISH.beatMax) is doing the rest of the work.
+//
+//            Every raise here has to be checked against FISH.sprintCap, which is
+//            the shark's top speed less a margin: cruise x fleeSpeedMul must stay
+//            under it or the fish become uncatchable. That is why fleeSpeedMul has
+//            come down 2.8 -> 2.4 -> 2.0 as these went up — the burst is expressed
+//            as a multiple of cruise, so raising cruise raises the burst too.
 //   weight : relative odds of a school drawing this class
 export const FISH = {
-  // ~54 fish, and each one is its own draw call — don't overdo it. `species` below
-  // adds another 9-24 fish on top, at three draw calls each.
-  schools: 7,
-  fleeRadius: 20, fleeSpeedMul: 2.8, fleeDistance: 30,
+  // Schools spread across the whole reef, by AREA (see wanderPoint). ~7 bait fish
+  // per school on average, and each fish is its own draw call, so this number is
+  // not free — `species` below adds another 9-24 on top at three draw calls each.
+  schools: 9,
+  // ---- AND SCHOOLS HELD TO THE MIDDLE ----
+  // Equal-area spawning is correct — it is what stops every shoal bunching at the
+  // origin — but it has a consequence: the inner 22-unit circle is only 11% of the
+  // roam area, so it statistically held well under one school. That is precisely
+  // where the shark starts, and where it spends most of its time patrolling, so the
+  // emptiest water in the game was the water you look at most.
+  //
+  // These schools spawn there AND stay there: their roam radius is centerRoam x the
+  // usual one, so they hold the middle ground instead of dispersing across the reef
+  // within a minute. Four of them in ~1,500 square units is dense — fish are always
+  // in sight of the start point.
+  centerSchools: 4,
+  centerRoam: 0.34,
+  // ---- SPRINTING AWAY FROM THE SHARK ------------------------------------
+  // A shoal used to recompute its escape vector off the shark's CURRENT bearing
+  // every single frame it was inside fleeRadius. That is why it read as a series
+  // of sharp direction changes: circle a school and its target swings round with
+  // you, so it pivots on the spot instead of going anywhere. Now the heading is
+  // computed ONCE when the burst starts and held for the whole thing — the shoal
+  // picks a line and runs it.
+  fleeRadius: 26,        // shark this close and the shoal is ALARMED
+  // ---- WHY THE FISH LOOKED LIKE THEY WERE "JUST CHILLING" ----
+  // There used to be exactly one panic state — a 1.5s burst, once per 5s — and
+  // between bursts a shoal went straight back to cruise speed. So for 70% of the
+  // time the shark was among them they were sauntering. The timing was worse than
+  // the ratio: they triggered at 20 units, sprinted 1.5s while the shark covered 21,
+  // so the burst reliably ENDED just as it arrived on them.
+  //
+  // Now there are two states, and the shark being nearby is enough for the first:
+  //
+  //   ALARMED  shark inside fleeRadius. Sustained flight at alarmSpeedMul, holding
+  //            the escape line, for as long as it is there. No cruising with a
+  //            predator in the shoal.
+  //   SPRINT   the extra gear on top, in bursts of sprintTime every sprintCooldown.
+  //            Each burst re-aims the escape line and flash-expands the formation.
+  //
+  // The long cooldown existed because a sprint used to be faster than the shark
+  // (2.8x on the old speeds = 15.8 against a 14 top speed), so tiring them out was
+  // the only way to make them catchable. sprintCap below makes that structural
+  // instead, which is what allows the panic to be near-continuous.
+  fleeSpeedMul: 2.0,     // burst multiplier
+  alarmSpeedMul: 1.6,    // sustained-flight multiplier between bursts
+  sprintTime: 2.2,       // seconds of burst
+  sprintCooldown: 3.2,   // from the START of one burst to the next — a ~1s lull
+  // How much of the turn toward straight-away-from-the-shark a burst actually takes.
+  // A fraction, so a school already running keeps its line and just puts on speed —
+  // that reads as fleeing; taking the whole turn reads as wheeling on the spot.
+  escapeTurn: 0.45,
+  // ...but never keep a heading that still points INTO the shark. This is how close
+  // to straight-away the result must end up at worst, in radians, so a school
+  // swimming right at it does come about. 1.2 rad = 69°, i.e. it ends up heading at
+  // least 111° away from the shark rather than executing a flat 180.
+  escapeCone: 1.2,
+  // How far the formation blows outward during a burst. Real shoals "flash expand"
+  // when something hits them and re-form afterwards; this is one multiplier on the
+  // slot offsets, eased in and out, so it costs nothing and is the single clearest
+  // read that the school is frightened rather than swimming.
+  burstSpread: 1.5,
+  // Absolute ceiling on a shoal's speed, whatever the multipliers work out to. The
+  // shark tops out at SHARK.maxSpeed 14 (boost 15), so anything a shoal can sustain
+  // above that is not a burst, it is an escape — you would never land a bite. This
+  // is belt-and-braces over fleeSpeedMul: cruise speeds have been raised three times
+  // now, and each time the multiplier silently pushed the sprint past the shark. A
+  // hard cap means the next raise cannot reintroduce that bug.
+  sprintCap: 13.2,
+  // ---- TAIL BEAT vs. SPEED ----
+  // The other half of "they look slow", and arguably the bigger half. A bait fish's
+  // body flick was a fixed 7 Hz and an animated species' clip ran at a fixed
+  // timeScale, no matter how fast the fish was actually travelling — so a shoal
+  // sprinting for its life beat its tail at exactly the rate it used while drifting.
+  // Nothing on screen said "effort" except the scenery going past, and speed you
+  // can't see reads as slow.
+  //
+  // Both now scale with speed / cruise speed, capped here. At cruise that ratio is
+  // 1, so cruising looks exactly as it did; flat out the tail moves twice as fast.
+  beatMax: 2.2,
   // Shoals range this × WORLD.half. Cut from 1.1 when the world grew: as a
   // FRACTION it would have scaled with the bound and scattered the same 7 schools
   // across twice the water, so you'd almost never run into one. 0.85 × 77 ≈ 65 is
@@ -343,6 +549,38 @@ export const FISH = {
   // leaves the far water to the mountains and the kelp canopy — which is where
   // shoals belong anyway. Bait fish hold to the reef, not the open ocean.
   roam: 0.85,
+  // ---- STEERING ---------------------------------------------------------
+  // There are no waypoints. A school holds a HEADING and always swims forward along
+  // it; steering is turning that heading. See the long note at the top of fish.js for
+  // why every waypoint version of this stalled and left the fish spinning in place.
+  //
+  // Wander: every `wanderDwell` seconds, pick a new heading within ±`wanderTurn` of
+  // the current one and a new depth inside the band. Because the school never stops
+  // travelling, a nudge this size reads as a long sweeping traverse that eases a few
+  // degrees at a time — the motion that repeated waypoint schemes kept failing to
+  // produce.
+  wanderDwell: [4, 4],      // [min, extra] seconds between course nudges
+  wanderTurn: 0.9,          // max nudge, radians. ±52°: curves, never doubles back
+  // Turn rate in rad/s, [min, extra], jittered per school and then divided down by
+  // the formation's width — so a wide school of big fish arcs and a tight cloud of
+  // fry can flick round. This is the dial for how agile shoals feel.
+  turnRate: [1.1, 0.7],
+  alarmTurnMul: 1.9,        // frightened fish turn harder
+  // How fast the school's speed chases the gear it wants, as the fraction remaining
+  // after one second. Much tighter than a heading turn: a startled fish is at full
+  // speed almost immediately, and the burst is meant to be a visible kick.
+  speedEase: 0.002,
+  climbRate: 2.2,           // max vertical speed, units/s, easing toward its band depth
+
+  // ---- BOUNDARY ----
+  // Where the pressure to come about starts, as a fraction of the school's roam
+  // radius, and how hard it builds. This replaces steering at a target clamped to
+  // the rim — the school arcs round while still swimming instead of pressing into an
+  // invisible wall, which is what produces the sweep along the mountain line.
+  // clampRadius still backstops the position, but a school should never reach it.
+  edgeMargin: 0.78,
+  edgeTurn: 3.0,
+
   // Default depth band, as [low, high] fractions of the water column — 0 = mean
   // seabed, 1 = surface, the same convention CREATURES uses. This pair reproduces
   // the seabed+6 .. surface-6 range these shoals have always had: mid-water, which
@@ -352,6 +590,12 @@ export const FISH = {
   // individually against their own body radius, so this is the formation's floor,
   // not the fish's.
   floorClear: 3,
+  // Biting (prey.js). Every shoaling fish, generic or named, goes down in one
+  // snap and is worth one point — they're the bread-and-butter of the size curve,
+  // and anything that took two bites at this size would just feel unresponsive.
+  // A class or species row may override either.
+  bites: 1,
+  points: 1,
   // Scale bumped up across the three larger classes, and weight shifted toward
   // those same classes, so bigger fish are both individually larger and more
   // common. The fry class was then doubled too (0.3-0.5 -> 0.6-1.0): at the old
@@ -364,10 +608,10 @@ export const FISH = {
   // tails nearly twice as fast (`wobble` scales with 1/sqrt(size)), where the next
   // class up is 8-14 fish spread over 7 units.
   classes: [
-    { scale: [0.6,  1.0], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [2.8, 1.7], weight: 2 },
-    { scale: [1.0,  1.6], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [2.1, 1.5], weight: 4 },
-    { scale: [2.1,  3.0], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [1.6, 1.1], weight: 4 },
-    { scale: [3.8,  5.0], count: [1,  2], spread: [11,  5.5, 11 ], speed: [1.2, 0.8], weight: 3 },
+    { scale: [0.6,  1.0], count: [6,  5], spread: [4.5, 2.0, 4.5], speed: [5.0, 2.8], weight: 2 },
+    { scale: [1.0,  1.6], count: [8,  6], spread: [7.0, 3.2, 7.0], speed: [4.8, 3.0], weight: 4 },
+    { scale: [2.1,  3.0], count: [4,  4], spread: [9.0, 4.2, 9.0], speed: [4.2, 2.6], weight: 4 },
+    { scale: [3.8,  5.0], count: [1,  2], spread: [11,  5.5, 11 ], speed: [3.6, 2.2], weight: 3 },
   ],
   // ---- NAMED SPECIES ----
   // The `classes` above are all the same untextured salmon at N scales, moved by a
@@ -400,13 +644,14 @@ export const FISH = {
   // difference in habit between the three.
   species: [
     { model: 'blueFish',  schools: [1, 2], count: [3, 1], scale: [1.0, 1.4],
-      spread: [3.4, 1.6, 3.4], speed: [2.4, 1.3], clip: 'Armature|Swim.001', rate: 2.2,
-      band: [0.06, 0.28], floorClear: 1.8 },
+      spread: [3.4, 1.6, 3.4], speed: [4.2, 2.6], clip: 'Armature|Swim.001', rate: 2.2,
+      band: [0.06, 0.28], floorClear: 1.8, name: 'Blue fish' },
     { model: 'clownFish', schools: [1, 2], count: [3, 1], scale: [0.9, 1.3],
-      spread: [3.0, 1.4, 3.0], speed: [2.6, 1.4], clip: 'Armature|Swim',     rate: 2.6,
-      band: [0.02, 0.18], floorClear: 1.6 },
+      spread: [3.0, 1.4, 3.0], speed: [4.6, 2.8], clip: 'Armature|Swim',     rate: 2.6,
+      band: [0.02, 0.18], floorClear: 1.6, name: 'Clownfish' },
     { model: 'fish2',     schools: [1, 2], count: [3, 1], scale: [1.0, 1.4],
-      spread: [3.6, 1.7, 3.6], speed: [2.2, 1.2], clip: 'Armature|Swim',     rate: 2.0 },
+      spread: [3.6, 1.7, 3.6], speed: [4.6, 2.8], clip: 'Armature|Swim',     rate: 2.0,
+      name: 'Reef fish' },
   ],
 };
 
@@ -535,11 +780,29 @@ export const AUDIO = {
   // distant whale by ~60% (0.29 -> 0.46). They were mixed against each other rather
   // than against the room, and at the old levels the whale in particular was under
   // the threshold where you notice it at all.
-  ambience: { url: 'assets/audio/deep-ocean-ambience.mp3', volume: 0.85 },
-  bubbles:  { url: 'assets/audio/bubbles-ambience.ogg',    volume: 0.16 },
-  whale:    { url: 'assets/audio/whale_sound.mp3',         volume: 0.46 },
+  //
+  // Then all three beds went up another 40%... except the deep-ocean layer, which
+  // could not. HTMLAudioElement.volume is HARD CAPPED at 1.0, and that layer was
+  // already at 0.85, so 0.85 x 1.4 = 1.19 is simply not expressible: it lands at
+  // 1.0, which is +18%, not +40%. The other two had the headroom and got the full
+  // amount. If the bed still needs to be louder than the element ceiling allows,
+  // that takes routing it through a Web Audio GainNode (gain > 1 is legal there) —
+  // which is the one thing this module was written to avoid, so it is a deliberate
+  // decision rather than a line to add casually.
+  ambience: { url: 'assets/audio/deep-ocean-ambience.mp3', volume: 1.0 },
+  bubbles:  { url: 'assets/audio/bubbles-ambience.ogg',    volume: 0.224 },
+  whale:    { url: 'assets/audio/whale_sound.mp3',         volume: 0.644 },
   swim:     { url: 'assets/audio/shark_movement.mp3', volume: [0.05, 0.45], rate: [0.8, 1.5] },
-  fishFlee: { url: 'assets/audio/fish-flee.mp3', volume: 0.35, cooldown: 4 },   // min seconds between plays
   collect:  { url: 'assets/audio/orb-collect.mp3', volume: 0.3 },
   splash:   { url: 'assets/audio/shark_drop_into_ocean.wav', volume: 0.36 },
+  // No bite sample ships with the game, so the jaw snap is the splash played
+  // short and fast — at 2.4x it reads as a water-muffled chomp rather than as
+  // the entry splash it started life as. `rate` is a plain playbackRate here
+  // (the [min,max] pair form is the swim loop's alone).
+  bite:     { url: 'assets/audio/shark_drop_into_ocean.wav', volume: 0.2, rate: 2.4 },
+  // And the swallow reuses the orb chime, pitched down so eating a whale doesn't
+  // sound identical to picking up a blob. Halved from 0.34: it fires on every
+  // single fish, so anything that reads as a "ping" the first time reads as
+  // nagging by the fiftieth.
+  eat:      { url: 'assets/audio/orb-collect.mp3', volume: 0.17, rate: 0.75 },
 };

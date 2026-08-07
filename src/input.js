@@ -20,6 +20,16 @@ canvas.addEventListener('click', () => {
   if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
 });
 
+// Left click bites. Gated on the pointer being locked, which does two jobs: the
+// click that CAPTURES the pointer isn't also a bite, and while the cursor is free
+// (Esc, or the start screen) the mute button and the Dive In button are clickable
+// without the shark snapping at the water behind them.
+let bitePressed = false;
+addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || document.pointerLockElement !== canvas) return;
+  bitePressed = true;
+});
+
 export function capturePointer() {
   canvas.requestPointerLock();
 }
@@ -39,6 +49,14 @@ export function thrustAxis() {
 
 export function boosting() {
   return !!(keys['ShiftLeft'] || keys['ShiftRight']);
+}
+
+// Like the mouse-look delta below: reading it consumes it, so one press is one
+// bite no matter how the frame rate lines up with the click.
+export function consumeBite() {
+  const wanted = bitePressed;
+  bitePressed = false;
+  return wanted;
 }
 
 // Mouse look is a delta: reading it consumes it, so it applies exactly once.

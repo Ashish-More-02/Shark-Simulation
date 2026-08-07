@@ -9,9 +9,11 @@ import { scatterAll, updateProps } from './props.js';
 import { createSchools, updateSchools } from './fish.js';
 import { createCreatures, updateCreatures } from './creatures.js';
 import { createOrbs, updateOrbs } from './orbs.js';
-import { createShark, updateShark, sharkState, depthMetres } from './shark.js';
-import { setDepth, setSpeed } from './hud.js';
-import { updateSwim, updateFishFlee } from './audio.js';
+import { createShark, updateShark, sharkState, depthMetres, sharkLength } from './shark.js';
+import { updateBite } from './bite.js';
+import { preyStats, nearestTracked } from './prey.js';
+import { setDepth, setSpeed, setEaten, setSize, setTrack } from './hud.js';
+import { updateSwim } from './audio.js';
 
 // ============================================================
 //  WORLD  — composition root. Builds the scene in order, then
@@ -49,6 +51,11 @@ export async function buildWorld() {
 export function updateWorld(dt, t) {
   if (!ready) return;
 
+  // Bite BEFORE the shark moves, so the head snap and the lunge impulse both land
+  // on the frame you clicked rather than the one after. The hit test pays for that
+  // with last frame's positions — see bite.js.
+  updateBite(dt);
+
   // The shark moves first: everything below reads its final position this frame.
   updateShark(dt, t);
   const pos = sharkState.obj.position;
@@ -58,7 +65,7 @@ export function updateWorld(dt, t) {
   // CPU pass any more. What replaced updateSway() is pure culling: decide which
   // prop chunks are in front of the camera and near enough to matter.
   updateProps();
-  const fleeing = updateSchools(dt, t, pos);
+  updateSchools(dt, t, pos);
   updateCreatures(dt, pos);
   updateOrbs(dt, t, pos);
 
@@ -70,8 +77,22 @@ export function updateWorld(dt, t) {
   // of them.
 
   updateSwim(speed, SHARK.maxSpeed);
-  updateFishFlee(dt, fleeing);
 
   setDepth(depthMetres());
   setSpeed(speed);
+  setEaten(preyStats.eaten);
+  setSize(sharkLength());
+
+  // Bearing to the nearest whale / dolphin / anglerfish. Screen-right is
+  // cross(forward, up) = (-fz, 0, fx), so the target's right- and forward-
+  // components give a signed angle straight out of atan2: 0 dead ahead, positive
+  // to starboard. Done here rather than in hud.js, which stays DOM-only.
+  const track = nearestTracked(pos);
+  if (!track) {
+    setTrack(null);
+  } else {
+    const dx = track.pos.x - pos.x, dz = track.pos.z - pos.z;
+    const fx = sharkState.forward.x, fz = sharkState.forward.z;
+    setTrack(track.name, Math.round(track.dist), Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz));
+  }
 }

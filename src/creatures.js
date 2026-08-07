@@ -6,6 +6,7 @@ import { floorAt } from './terrain.js';
 import { ringRadius, clampRadius } from './placement.js';
 import { resolveBody } from './collision.js';
 import { tickMixer } from './mixers.js';
+import { registerPrey } from './prey.js';
 
 // ============================================================
 //  WILDLIFE  — animated skinned rigs that roam on their own.
@@ -39,7 +40,10 @@ const ROAM_LIMIT = WORLD.mountainRing - 2;
 // scratch — allocated once, reused every frame
 const tmp = new THREE.Vector3();
 const away = new THREE.Vector3();
-const fwd = new THREE.Vector3();
+
+// Where the shark was last frame. Only used to place a respawning animal well away
+// from it, so nothing materialises in front of the player.
+const lastShark = new THREE.Vector3();
 
 // Fraction of the water column -> world Y. 0 = mean seabed, 1 = surface.
 function columnY(frac) {
@@ -127,11 +131,17 @@ function spawn(proto, spec) {
     girth: dims.halfHeight * size,
     retarget: 0,
     mixer: null,
+    // Own heading vector rather than a shared scratch: prey.js holds onto this as
+    // the axis of the animal's capsule hit volume, so it has to stay valid between
+    // frames instead of being whatever the last creature in the loop wrote.
+    fwd: new THREE.Vector3(0, 0, -1),
+    alive: true,
   };
 
   newWaypoint(c);
   pivot.position.copy(c.target);
   pivot.rotation.y = c.yaw;
+  c.fwd.set(0, 0, -1).applyQuaternion(pivot.quaternion);
 
   // Each rig gets its own mixer rooted on its own clone, so bone-name lookups
   // resolve inside that subtree and the copies never share a playhead.
@@ -148,7 +158,42 @@ function spawn(proto, spec) {
     console.warn(`${spec.model}: no animation clips found`);
   }
 
+  // Biteable. Unlike a fish, these are LONG — the whale is 21 units nose to tail —
+  // so the hit volume is a capsule down the spine (prey.js) rather than a sphere.
+  // `pos` and `axis` are live references into the rig, so it tracks the animal for
+  // free; 0.9 keeps the caps just inside the nose and the tail fluke.
+  registerPrey({
+    pos: pivot.position,
+    axis: c.fwd,
+    half: c.halfLength * 0.9,
+    radius: c.girth + 0.6,
+    name: spec.name,
+    bites: spec.bites,
+    points: spec.points,
+    track: true,        // wildlife shows up in the HUD's NEAREST bearing
+    hide() { c.alive = false; pivot.visible = false; },
+    show() { c.alive = true; pivot.visible = true; reseat(c); },
+  });
+
   creatures.push(c);
+}
+
+// Put a respawning animal back somewhere the player is not looking. A whale that
+// blinks into existence twenty units off your nose undoes the whole illusion, and
+// unlike a fish rejoining its school there is nothing to hide behind out here.
+function reseat(c) {
+  for (let i = 0; i < 8; i++) {
+    newWaypoint(c);
+    if (c.target.distanceTo(lastShark) > 55) break;
+  }
+  c.pivot.position.copy(c.target);
+  c.yaw = Math.random() * Math.PI * 2;
+  c.pitch = 0;
+  c.roll = 0;
+  c.pivot.rotation.set(0, c.yaw, 0);
+  c.body.rotation.z = 0;   // roll lives on the inner group, and it damps in slowly
+  c.fwd.set(0, 0, -1).applyQuaternion(c.pivot.quaternion);
+  newWaypoint(c);         // ...and now somewhere to actually swim
 }
 
 export function createCreatures(models) {
@@ -162,7 +207,10 @@ export function createCreatures(models) {
 }
 
 export function updateCreatures(dt, sharkPos) {
+  lastShark.copy(sharkPos);      // for reseat(), when one of these respawns
+
   for (const c of creatures) {
+    if (!c.alive) continue;      // eaten: hidden, and not simulated until it's back
     const { spec, pivot, body } = c;
     const pos = pivot.position;
 
@@ -212,8 +260,8 @@ export function updateCreatures(dt, sharkPos) {
     pivot.rotation.y = c.yaw;
     pivot.rotation.x = c.pitch;
     body.rotation.z = c.roll;
-    fwd.set(0, 0, -1).applyQuaternion(pivot.quaternion);
-    pos.addScaledVector(fwd, c.speed * dt);
+    c.fwd.set(0, 0, -1).applyQuaternion(pivot.quaternion);
+    pos.addScaledVector(c.fwd, c.speed * dt);
 
     // --- bounds: off the dunes, under the surface, inside the roam circle ---
     clampRadius(pos, ROAM_LIMIT);
@@ -234,7 +282,7 @@ export function updateCreatures(dt, sharkPos) {
     // On real contact, pick a fresh waypoint soon. Without that the animal keeps
     // pushing toward a target on the far side of the peak and grinds along its
     // flank for the rest of its dwell time.
-    if (resolveBody(pos, fwd, c.halfLength, c.girth) > 0.01) {
+    if (resolveBody(pos, c.fwd, c.halfLength, c.girth) > 0.01) {
       c.retarget = Math.min(c.retarget, 0.6);
       // The push is horizontal, so re-seat above the dunes at the new x/z.
       pos.y = Math.max(pos.y, floorAt(pos.x, pos.z, c.clearance));

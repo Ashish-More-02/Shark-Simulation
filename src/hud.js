@@ -7,8 +7,13 @@ const el = {
   depth:    document.getElementById('depth'),
   speed:    document.getElementById('speed'),
   orbs:     document.getElementById('orbs'),
+  eaten:    document.getElementById('eaten'),
+  size:     document.getElementById('size'),
+  track:    document.getElementById('track'),
   hud:      document.getElementById('hud'),
   hint:     document.getElementById('hint'),
+  cross:    document.getElementById('crosshair'),
+  biteInfo: document.getElementById('biteInfo'),
   start:    document.getElementById('start'),
   loading:  document.getElementById('loading'),
   controls: document.getElementById('controls'),
@@ -18,8 +23,10 @@ const el = {
 };
 
 // Cache the last values so we only touch the DOM when the text actually changes
-// — writing textContent every frame invalidates layout for no reason.
-let lastDepth = null, lastSpeed = null;
+// — writing textContent every frame invalidates layout for no reason. That matters
+// most for SIZE, which creeps by ~0.004 units per fish and would otherwise rewrite
+// its node on every one of the 60 frames it takes to show one decimal place.
+let lastDepth = null, lastSpeed = null, lastEaten = null, lastSize = null, lastTrack = null;
 
 export function setDepth(metres) {
   if (metres === lastDepth) return;
@@ -36,6 +43,59 @@ export function setSpeed(speed) {
 
 export function setOrbs(collected, total) {
   el.orbs.textContent = `${collected} / ${total}`;
+}
+
+export function setEaten(n) {
+  if (n === lastEaten) return;
+  lastEaten = n;
+  el.eaten.textContent = `${n}`;
+}
+
+// Length nose to tail, in world units — the shark starts at 6.0 and tops out at
+// 12.6 against the whale's 21.
+export function setSize(length) {
+  const s = length.toFixed(1);
+  if (s === lastSize) return;
+  lastSize = s;
+  el.size.textContent = `${s} m`;
+}
+
+// ---- NEAREST WILDLIFE ------------------------------------------------------
+// "Dolphin ↗ 38 m". `bearing` is the signed horizontal angle from the shark's own
+// heading to the animal: 0 is dead ahead, +π/2 is off the right flank, ±π is
+// behind you. Eight sectors is plenty — you only need to know which way to turn.
+const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+
+export function setTrack(name, metres, bearing) {
+  const text = name
+    ? `${name} ${ARROWS[(((Math.round(bearing / (Math.PI / 4))) % 8) + 8) % 8]} ${metres} m`
+    : '—';
+  if (text === lastTrack) return;
+  lastTrack = text;
+  el.track.textContent = text;
+}
+
+// ---- BITE FEEDBACK ---------------------------------------------------------
+// A bite is instant and the target is usually a small fish somewhere off to the
+// side, so without these two you genuinely cannot tell a hit from a miss. Both are
+// pure CSS animations restarted from JS — no per-frame DOM work.
+let flashTimer = 0, infoTimer = 0;
+
+export function flashBite(killed) {
+  el.cross.classList.remove('hit', 'kill');
+  void el.cross.offsetWidth;          // reflow, or re-adding the class won't replay
+  el.cross.classList.add(killed ? 'kill' : 'hit');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.cross.classList.remove('hit', 'kill'), 340);
+}
+
+// "Whale 7/10" under the crosshair — the only way to know a ten-bite animal is
+// actually taking damage rather than shrugging you off.
+export function showBiteInfo(text) {
+  el.biteInfo.textContent = text;
+  el.biteInfo.classList.add('show');
+  clearTimeout(infoTimer);
+  infoTimer = setTimeout(() => el.biteInfo.classList.remove('show'), 1400);
 }
 
 // ---- PERF READOUT ----------------------------------------------------------
@@ -87,6 +147,7 @@ export function wireStartScreen(onDive) {
     el.start.classList.add('gone');
     el.hud.classList.remove('hidden');
     el.hint.classList.remove('hidden');
+    el.cross.classList.remove('hidden');
     onDive();
   }, { once: true });
 }

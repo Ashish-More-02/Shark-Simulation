@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WORLD, ORBS } from './config.js';
+import { WORLD, ORBS, BITE } from './config.js';
 import { scene } from './core.js';
 import { floorAt } from './terrain.js';
 import { softSprite } from './materials.js';
@@ -7,9 +7,15 @@ import { ringRadius } from './placement.js';
 import { insideSolid } from './collision.js';
 import { setOrbs } from './hud.js';
 import { playCollectSound } from './audio.js';
+import { addPoints } from './prey.js';
 
 // ============================================================
 //  COLLECTIBLE ORBS
+//
+//  Also the one free ride on the size curve: an orb is worth BITE.orbPoints of
+//  growth (config.js) for no chase and no bites — six fish for swimming through
+//  it. They don't respawn, so this is a one-time bonus of ~18% of the way to full
+//  size for exploring the whole reef.
 // ============================================================
 
 const orbs = [];
@@ -84,6 +90,7 @@ export function updateOrbs(dt, t, sharkPos) {
       scene.remove(orb);
       orbs.splice(i, 1);
       setOrbs(total - orbs.length, total);
+      addPoints(BITE.orbPoints);
       playCollectSound();
     }
   }

@@ -1,8 +1,18 @@
 # 🦈 Deep Ocean Shark
 
 A tiny 3D browser game built with **Three.js** (no build step). Swim through the
-deep ocean as a shark, explore, and collect glowing orbs — viewed from a
+deep ocean as a shark, hunt the reef, and collect glowing orbs — viewed from a
 top-back chase camera.
+
+Everything you eat makes you bigger. A shoaling fish or an anglerfish goes down in
+one bite, a dolphin takes 3, a whale takes 10, and anything eaten comes back
+exactly 60 seconds later. Growth is deliberately imperceptible per meal — about
+1.7 cm of length per bait fish — but a fully fed shark reaches 12.6 units nose to
+tail, which is 40% shorter than the whale and stays that way.
+
+The `NEAREST` line on the HUD gives you a bearing and a distance to the closest
+whale, dolphin or anglerfish. You need it: there are 11 of them scattered across a
+basin you can only see ~50 units through.
 
 ## future development 
 
@@ -28,7 +38,12 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `A` / `D` | Turn left / right |
 | `Q` / `E` | Rise / dive |
 | `Shift` | Boost |
+| Left click | Bite |
 | Mouse | Look around (click canvas to capture; `Esc` releases) |
+
+The first click captures the pointer; after that left click bites. The reticle
+pulses on a hit and flares on a kill, and multi-bite prey shows its progress
+(`Whale 7/10`) under it.
 
 ## Project layout
 
@@ -51,9 +66,11 @@ shark-game/
 │   ├── props.js      # scatter placement + per-instance rock weathering
 │   ├── fish.js       # shoaling and fleeing — size classes + animated species
 │   ├── creatures.js  # roaming animated wildlife (whale, dolphins, anglerfish)
-│   ├── orbs.js       # collectibles
-│   ├── shark.js      # rig, handling, swim clip, chase camera
-│   ├── input.js      # keyboard + mouse-look, exposed as axes
+│   ├── orbs.js       # collectibles — also bonus growth points
+│   ├── prey.js       # registry of biteable animals: hp, hit volume, respawn
+│   ├── bite.js       # the attack: cooldown, lunge, hit resolution, feedback
+│   ├── shark.js      # rig, handling, swim clip, growth, chase camera
+│   ├── input.js      # keyboard + mouse-look + the bite click, as axes
 │   ├── hud.js        # the only module that touches the DOM
 │   └── world.js      # composition root: builds scene, drives updates
 └── assets/           # .glb models
@@ -61,9 +78,16 @@ shark-game/
 
 The dependency graph is a DAG with no cycles: `config` imports nothing,
 `core` imports only `config`, and `world` is the only module that knows about
-all the others. Subsystems never import each other — anything one needs from
-another (the shark's position, for instance) is passed in as an argument by
-`world.updateWorld()`, which also fixes the update order in one readable place.
+all the others. Simulation modules don't reach for each other's state — anything
+one needs from another (the shark's position, for instance) is passed in as an
+argument by `world.updateWorld()`, which also fixes the update order in one
+readable place.
+
+The leaf services (`prey`, `hud`, `audio`, `particles`, `collision`, `mixers`) are
+the exception, and deliberately so: they hold no simulation state of their own, so
+importing one is just calling a function. `fish` and `creatures` hand their animals
+to `prey` at spawn and never talk to it again; `bite` is the only module that knows
+biting exists, and it pulls in whatever it needs to make one happen.
 
 ## Tweaking
 

@@ -32,6 +32,69 @@ html, body {
 .hud-row { display: flex; justify-content: space-between; gap: 22px; font-size: 15px; }
 .hud-row .label { color: #6fb7e6; font-size: 11px; font-weight: 700; letter-spacing: 2px; align-self: center; }
 
+/* ---- Bite reticle ----
+   A bite is over in a fifth of a second and the target is usually a small fish
+   off to one side, so the ring is the only thing telling you whether the snap
+   connected. Idle it is nearly invisible; `hit` pulses it, `kill` pulses it
+   harder and warmer. Both are CSS animations — no per-frame JS. */
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 2px solid rgba(190, 230, 255, 0.35);
+  border-radius: 50%;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+}
+#crosshair::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  background: rgba(190, 230, 255, 0.7);
+  border-radius: 50%;
+}
+#crosshair.hit  { animation: bite-hit  0.34s ease-out; }
+#crosshair.kill { animation: bite-kill 0.34s ease-out; }
+
+@keyframes bite-hit {
+  0%   { transform: scale(0.55); border-color: rgba(190, 230, 255, 1); }
+  100% { transform: scale(1);    border-color: rgba(190, 230, 255, 0.35); }
+}
+@keyframes bite-kill {
+  0%   { transform: scale(0.4); border-color: rgba(255, 220, 130, 1);
+         box-shadow: 0 0 22px rgba(255, 190, 60, 0.8); }
+  100% { transform: scale(1.5); border-color: rgba(190, 230, 255, 0);
+         box-shadow: 0 0 0 rgba(255, 190, 60, 0); }
+}
+
+/* "Whale 7/10" just under the reticle. Kept out of the HUD block on purpose:
+   it's about what you're looking AT, so it belongs where you're looking. */
+#biteInfo {
+  position: fixed;
+  top: calc(50% + 28px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #ffe3a0;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  z-index: 4;
+}
+#biteInfo.show { opacity: 1; transition: none; }
+
 /* ---- Perf readout (F3) ---- */
 #perf {
   position: fixed;

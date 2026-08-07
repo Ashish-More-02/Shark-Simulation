@@ -41,6 +41,9 @@ function playOnce(cfg) {
   const el = pool.els[pool.next];
   pool.next = (pool.next + 1) % POOL_SIZE;
   el.volume = cfg.volume;
+  // Two one-shots share the splash file and two share the orb chime, at different
+  // rates — so the rate has to be set per PLAY, not once per element.
+  el.playbackRate = cfg.rate || 1;
   el.muted = muted;
   el.currentTime = 0;          // rewind — this element may still be playing
   el.play().catch(() => {});   // ignore autoplay rejection outside a user gesture
@@ -69,17 +72,16 @@ export function updateSwim(speedAbs, maxSpeed) {
   swim.playbackRate = rMin + t * (rMax - rMin);
 }
 
-let fleeCooldown = 0;
-export function updateFishFlee(dt, fleeing) {
-  fleeCooldown -= dt;
-  if (fleeing && fleeCooldown <= 0) {
-    fleeCooldown = AUDIO.fishFlee.cooldown;
-    playOnce(AUDIO.fishFlee);
-  }
-}
-
 export function playCollectSound() {
   playOnce(AUDIO.collect);
+}
+
+export function playBite() {
+  playOnce(AUDIO.bite);
+}
+
+export function playEat() {
+  playOnce(AUDIO.eat);
 }
 
 export function toggleMute() {

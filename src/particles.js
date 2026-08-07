@@ -93,16 +93,38 @@ export function createParticles() {
   return { bubbles, snow, wake };
 }
 
-// Drop one bubble just behind the shark's tail.
-export function emitWake(position, forward) {
+// Claim the next slot in the ring and park a bubble at (x, y, z).
+function spawnBubble(x, y, z) {
   const i = wake.next;
   if (wake.life[i] <= 0) wake.live++;
-  wake.pos[i * 3]     = position.x - forward.x * 3 + (Math.random() - 0.5) * 0.8;
-  wake.pos[i * 3 + 1] = position.y - forward.y * 3 + (Math.random() - 0.5) * 0.8;
-  wake.pos[i * 3 + 2] = position.z - forward.z * 3 + (Math.random() - 0.5) * 0.8;
+  wake.pos[i * 3]     = x;
+  wake.pos[i * 3 + 1] = y;
+  wake.pos[i * 3 + 2] = z;
   wake.life[i] = 1;
   wake.next = (i + 1) % wake.count;
   wake.dirty = true;
+}
+
+// Drop one bubble just behind the shark's tail.
+export function emitWake(position, forward) {
+  spawnBubble(
+    position.x - forward.x * 3 + (Math.random() - 0.5) * 0.8,
+    position.y - forward.y * 3 + (Math.random() - 0.5) * 0.8,
+    position.z - forward.z * 3 + (Math.random() - 0.5) * 0.8
+  );
+}
+
+// A burst at a point — the spray off a bite (bite.js). Same pool as the wake, so
+// a hard chomp briefly borrows slots from the trail and then gives them back;
+// there is no second particle system and no allocation.
+export function emitPuff(position, count, spread) {
+  for (let i = 0; i < count; i++) {
+    spawnBubble(
+      position.x + (Math.random() - 0.5) * spread,
+      position.y + (Math.random() - 0.5) * spread,
+      position.z + (Math.random() - 0.5) * spread
+    );
+  }
 }
 
 export function updateWake(dt) {
