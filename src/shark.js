@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WORLD, SHARK, MODELS, BITE } from './config.js';
+import { WORLD, SHARK, MODELS, BITE, STAMINA } from './config.js';
 import { scene, camera } from './core.js';
 import { floorAt } from './terrain.js';
 import { resolveSolids, resolveBody } from './collision.js';
@@ -21,6 +21,14 @@ export const sharkState = {
   scale: 1,
   // Seconds left of the jaw-snap pose. bite.js sets it; we play it out.
   snap: 0,
+  // ---- BOOST STAMINA (see STAMINA in config.js) ----
+  // Read by the HUD ring. Kept here rather than in hud.js because it is game
+  // state that happens to be displayed, not display state: the gate below is what
+  // decides whether Shift does anything at all.
+  stamina: 1,           // 0..1 of a full bar
+  staminaSpent: false,  // bottomed out — Shift is dead until stamina is back to 1
+  boostHeld: false,     // Shift down this frame, whether or not it bought anything
+  sprinting: false,     // ...and whether it actually did
 };
 
 let mixer = null, swimAction = null;
@@ -81,9 +89,34 @@ export function updateShark(dt, t) {
   pitch += pitchAxis() * SHARK.pitchRate * dt + look.pitch;
   pitch = THREE.MathUtils.clamp(pitch, -SHARK.pitchLimit, SHARK.pitchLimit);
 
-  // --- speed: thrust, then drag, then clamp ---
+  // --- boost stamina ---
+  // Drain is charged for the boost you RECEIVE, not for the key you hold: Shift
+  // while drifting or reversing never bought a sprint (boost has always required
+  // forward thrust), so it must not cost anything either. The ring still shows
+  // while merely holding Shift — that's what makes it a gauge you can check.
   const thrust = thrustAxis();
-  const sprinting = boosting() && thrust > 0;
+  const held = boosting();
+  const sprinting = held && thrust > 0 && !sharkState.staminaSpent;
+  if (sprinting) {
+    sharkState.stamina -= dt / STAMINA.boostSeconds;
+    if (sharkState.stamina <= 0) {
+      sharkState.stamina = 0;
+      sharkState.staminaSpent = true;    // latched — see the note in config.js
+    }
+  } else if (sharkState.stamina < 1) {
+    // One constant rate, so a half-spent bar costs half of refillSeconds to
+    // recover. Refills while Shift is still down, which is the only way out of
+    // the spent state.
+    sharkState.stamina += dt / STAMINA.refillSeconds;
+    if (sharkState.stamina >= 1) {
+      sharkState.stamina = 1;
+      sharkState.staminaSpent = false;
+    }
+  }
+  sharkState.boostHeld = held;
+  sharkState.sprinting = sprinting;
+
+  // --- speed: thrust, then drag, then clamp ---
   if (thrust) {
     const accelMul = thrust < 0 ? SHARK.reverseAccelMul : (sprinting ? SHARK.boostAccelMul : 1);
     sharkState.speed += SHARK.accel * dt * thrust * accelMul;

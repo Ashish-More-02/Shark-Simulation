@@ -12,7 +12,7 @@ import { createOrbs, updateOrbs } from './orbs.js';
 import { createShark, updateShark, sharkState, depthMetres, sharkLength } from './shark.js';
 import { updateBite } from './bite.js';
 import { preyStats, nearestTracked } from './prey.js';
-import { setDepth, setSpeed, setEaten, setSize, setTrack } from './hud.js';
+import { setDepth, setSpeed, setEaten, setSize, setTrack, setStamina } from './hud.js';
 import { updateSwim } from './audio.js';
 
 // ============================================================
@@ -82,6 +82,7 @@ export function updateWorld(dt, t) {
   setSpeed(speed);
   setEaten(preyStats.eaten);
   setSize(sharkLength());
+  setStamina(sharkState.stamina, sharkState.boostHeld, sharkState.staminaSpent, sharkState.scale);
 
   // Bearing to the nearest whale / dolphin / anglerfish. Screen-right is
   // cross(forward, up) = (-fz, 0, fx), so the target's right- and forward-

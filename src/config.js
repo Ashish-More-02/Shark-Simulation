@@ -329,7 +329,18 @@ export const SHARK = {
   // higher ceiling alone never gets touched — boostAccelMul is what actually
   // pushes the equilibrium up, past boostSpeed, which then hard-clamps it
   // there. Releasing Shift drops the ceiling straight back to maxSpeed.
-  boostSpeed: 15, boostAccelMul: 1.25,
+  //
+  // So the two speeds you actually swim at are 12.2 and 14 — the first set by
+  // accel/drag, the second by this clamp. maxSpeed is neither: it is the ceiling
+  // on everything, which cruise never reaches and only the bite lunge (BITE.lunge
+  // adds 3.2 outright) ever touches.
+  //
+  // boostSpeed came 15 -> 14. boostAccelMul deliberately did NOT come down with
+  // it: the clamp has to sit well BELOW the equilibrium it is clamping (1.25 puts
+  // that at 15.3) or the approach goes asymptotic and you spend the whole stamina
+  // bar still accelerating. At 1.25 the shark is at the ceiling ~0.5 s after you
+  // press Shift, which is what makes boost read as a lunge rather than a drift.
+  boostSpeed: 14, boostAccelMul: 1.25,
   reverseFrac: 0.4, reverseAccelMul: 1.2,
   tailRateIdle: 0.55, tailRateFast: 2.3,
   // Flat multipliers on top of the idle→fast interpolation below, so the two
@@ -397,6 +408,31 @@ export const SHARK = {
   // a whale's 70 points swell in over a moment instead of snapping.
   growthLag: 1.2,
 };
+
+// ---- STAMINA ---------------------------------------------------------------
+// Boost used to be free: hold Shift forever, sprint forever. This turns it into a
+// resource, so a chase is a decision about WHEN to spend rather than a key you
+// hold down for the whole run.
+//
+// The bar is measured in SECONDS OF BOOST, not in abstract points, because that
+// is the only unit the player can actually feel: `boostSeconds` of held Shift
+// empties it, `refillSeconds` of not boosting fills it. Both rates are constant,
+// which gives the proportionality the design asks for for free — spend 50% of the
+// bar and you get it back in 50% of refillSeconds, no special case needed.
+//
+// 6s out / 3.5s in is a 1.7:1 duty cycle, so over a long chase you are boosting
+// well over half the time. Boost is worth +1.8 units over cruise (14 against the
+// 12.2 that accel/drag settles at) and half of what you feel is the acceleration
+// getting there, so a harsher ratio would take away something already modest.
+export const STAMINA = {
+  boostSeconds: 6,      // a full bar, held down, in seconds
+  refillSeconds: 3.5,   // empty -> full, in seconds
+};
+// Bottoming out LATCHES (shark.js): Shift does nothing at all until the bar has
+// climbed the whole way back to full. Not a tuning choice — without it, the frame
+// after the bar hits 0 it has already refilled a sliver, Shift spends it, and an
+// exhausted shark stutters in and out of boost one frame at a time. That reads as
+// a bug, and amounts to an infinite boost at half strength.
 
 // ---- BITING ----------------------------------------------------------------
 // Left click snaps the jaws. The hit test is a single sphere-vs-body query per
@@ -533,8 +569,13 @@ export const FISH = {
   // read that the school is frightened rather than swimming.
   burstSpread: 1.5,
   // Absolute ceiling on a shoal's speed, whatever the multipliers work out to. The
-  // shark tops out at SHARK.maxSpeed 14 (boost 15), so anything a shoal can sustain
-  // above that is not a burst, it is an escape — you would never land a bite. This
+  // shark cruises at 12.2 and boosts to SHARK.boostSpeed 14, so anything a shoal can
+  // sustain above that is not a burst, it is an escape — you would never land a
+  // bite. Note the margin narrowed when boostSpeed came 15 -> 14: a sprinting shoal
+  // now runs 1 FASTER than a cruising shark and only 0.8 slower than a boosting one,
+  // so closing on a spooked school genuinely requires the boost (and the bite lunge
+  // to finish). That is the intended shape, but it is why this number cannot go up
+  // again without the shark's coming up too. This
   // is belt-and-braces over fleeSpeedMul: cruise speeds have been raised three times
   // now, and each time the multiplier silently pushed the sprint past the shark. A
   // hard cap means the next raise cannot reintroduce that bug.

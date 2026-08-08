@@ -95,6 +95,85 @@ html, body {
 }
 #biteInfo.show { opacity: 1; transition: none; }
 
+/* ---- Boost stamina ring ----------------------------------------------------
+   A ring, not a bar, and parked next to the shark rather than up in the HUD
+   corner: while you are boosting you are looking at the animal and at whatever
+   you are chasing, and a gauge you have to look away to read is a gauge you
+   don't read.
+
+   ---- WHY vh AND NOT px ----
+   The camera's fov is VERTICAL, so the shark's size on screen is a fixed
+   fraction of the viewport HEIGHT and nothing else. In px this ring would drift
+   onto the shark's flank on a short window and out into open water on a tall
+   one; in vh it holds its position beside the animal at every window size.
+
+   The 10vh offset below was found by eye, and it is worth saying why the obvious
+   arithmetic does NOT get you there: 60 degrees of VERTICAL fov at 8.8 units back
+   is about 10 world units per 100vh, so the collider's 1.15-unit body radius
+   predicts a flank at ~11vh and the pectoral fins wider still. On screen the
+   animal reads a good deal narrower than that — the collider is a fat
+   conservative capsule around a slim model, the shark sits below screen centre so
+   what is level with the ring is the tapering body rather than its widest point,
+   and the fins are thin and near-edge-on from behind. Trust the picture over the
+   numbers here; raise this toward 18vh to sit the ring clear in open water.
+   It is level with the body rather than the crosshair:
+   the chase camera aims a little above the shark, so screen centre is over its
+   back, not its middle. Both are one number each if it wants nudging.
+
+   ---- AND WHY IT MOVES WITH GROWTH ----
+   A fully grown shark is 2.1x wider on screen — SHARK.camGrowth is 0, so the
+   camera deliberately does NOT back off as the animal grows — and a ring at one
+   fixed offset would end up buried in its flank. So --s carries the shark's
+   current scale (hud.js) and the horizontal offset scales with it: the ring holds
+   the same relationship to the body at every size, which is the position staying
+   fixed in the sense that matters.
+   Only the horizontal offset scales. The chase camera aims a fixed 0.6 units
+   above the PIVOT whatever the scale, so the body's centre stays put vertically
+   and a scaled `top` would walk the ring down off the animal.
+   The ring itself grows at half rate: enough that it still belongs to a huge
+   shark, not so much that a HUD gauge becomes a dinner plate.
+   `max()` is the guard for a tall, narrow window, where the ~38vh a full-grown
+   shark puts it at would otherwise leave the screen.
+
+   The fill is one conic-gradient with a hard stop, masked into a ring, and the
+   only thing JS touches is --p. No layout, no reflow — a repaint of a ~50px box. */
+#stamina {
+  --p: 1;                                    /* 0..1 fill, written from hud.js */
+  --s: 1;                                    /* shark scale, 1..SHARK.maxScale */
+  --d: calc(5.4vh * (1 + (var(--s) - 1) * 0.5));   /* ring diameter */
+  --fill: #46e08a;
+  --track: rgba(6, 18, 26, 0.72);            /* the spent part of the arc */
+  position: fixed;
+  top: calc(50% + 4vh);
+  left: max(calc(var(--d) * 0.75), calc(50% - 10vh * var(--s)));
+  width: var(--d);
+  height: var(--d);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  /* 0deg, not 0: unitless zero is a <length>, and this stop is an <angle>. The
+     second stop landing before the first is what makes the edge hard — stops are
+     clamped up to the one before them, so the two coincide exactly. */
+  background: conic-gradient(var(--fill) calc(var(--p) * 1turn), var(--track) 0deg);
+  /* Punch the middle out. Two stops a hair apart rather than one, or the inner
+     edge aliases into a ragged circle. No drop-shadow to lift it off the water:
+     filters are applied BEFORE the mask, so the shadow would be cut away with the
+     hole. The dark track carries the contrast instead. */
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 58%);
+  mask: radial-gradient(circle, transparent 56%, #000 58%);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+}
+/* Held Shift raises it. Fading rather than snapping costs nothing and stops the
+   ring flickering when you tap Shift repeatedly, which is how it gets used. */
+#stamina.on { opacity: 1; }
+/* Bottomed out: Shift is doing nothing until this refills, so it stops being
+   green. Without a state change here an empty ring and a full one differ only by
+   an arc you cannot see at a glance, and Shift just feels broken. */
+#stamina.spent { --fill: #ff7a5c; }
+
 /* ---- Perf readout (F3) ---- */
 #perf {
   position: fixed;

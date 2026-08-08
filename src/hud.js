@@ -20,6 +20,7 @@ const el = {
   dive:     document.getElementById('dive'),
   mute:     document.getElementById('mute'),
   perf:     document.getElementById('perf'),
+  stamina:  document.getElementById('stamina'),
 };
 
 // Cache the last values so we only touch the DOM when the text actually changes
@@ -73,6 +74,46 @@ export function setTrack(name, metres, bearing) {
   if (text === lastTrack) return;
   lastTrack = text;
   el.track.textContent = text;
+}
+
+// ---- BOOST STAMINA RING ----------------------------------------------------
+// Called every frame from world.js with the shark's own state (shark.js owns the
+// numbers; this only draws them). `level` is 0..1, `visible` is Shift held,
+// `spent` is the bottomed-out lockout, `scale` is the shark's growth — the CSS
+// sizes and offsets the ring off it so it keeps station beside a growing animal.
+//
+// Both writes are quantised. `level` changes every single frame the ring is up,
+// but a full 6-second drain only crosses 200 steps, so at 60 fps that drops
+// roughly two writes in three — and a step is a third of a degree of arc, under a
+// pixel on a 50px ring. `scale` creeps by ~0.003 per fish (see growthFull), so
+// hundredths make it one write per ~4 fish instead of one per frame.
+let lastStep = -1, lastOn = null, lastSpent = null, lastScale = -1;
+
+export function setStamina(level, visible, spent, scale) {
+  if (visible !== lastOn) {
+    lastOn = visible;
+    el.stamina.classList.toggle('on', visible);
+  }
+  // Nothing below is worth doing while it's invisible. The ring fades out holding
+  // the arc it had at the moment Shift came up, which is what you want to see it
+  // do; the next press refreshes it on the same frame the class goes back on, so
+  // it never shows a stale value once it's actually readable.
+  if (!visible) return;
+
+  if (spent !== lastSpent) {
+    lastSpent = spent;
+    el.stamina.classList.toggle('spent', spent);
+  }
+  const s = Math.round(scale * 100);
+  if (s !== lastScale) {
+    lastScale = s;
+    el.stamina.style.setProperty('--s', s / 100);
+  }
+
+  const step = Math.round(level * 200);
+  if (step === lastStep) return;
+  lastStep = step;
+  el.stamina.style.setProperty('--p', step / 200);
 }
 
 // ---- BITE FEEDBACK ---------------------------------------------------------
@@ -148,6 +189,7 @@ export function wireStartScreen(onDive) {
     el.hud.classList.remove('hidden');
     el.hint.classList.remove('hidden');
     el.cross.classList.remove('hidden');
+    el.stamina.classList.remove('hidden');
     onDive();
   }, { once: true });
 }
