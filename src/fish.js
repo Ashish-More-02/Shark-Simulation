@@ -16,8 +16,8 @@ import { registerPrey } from './prey.js';
 //
 //    FISH.classes  size classes of the generic bait fish, picked by weight, so the
 //                  reef holds everything from clouds of fry to slow lone lunkers.
-//    FISH.species  named animated rigs (blue fish, clownfish, ...), a fixed one or
-//                  two schools each.
+//    FISH.species  named animated rigs (blue fish, clownfish, fish-2), a fixed
+//                  per-species school count rather than a weighted roll.
 //
 //  The steering below doesn't care which it got. The only branch is that a species
 //  row carries a `clip`, which means the fish are skinned rigs that animate
@@ -219,8 +219,9 @@ export function createSchools(models) {
   const inner = ROAM * FISH.centerRoam;
   for (let i = 0; i < FISH.centerSchools; i++) makeSchool(models.fish, pickClass(), inner);
 
-  // The named species on top: a fixed one or two schools each, so every playthrough
-  // has all of them somewhere on the reef rather than leaving it to a weighted roll.
+  // The named species on top: a fixed small count of schools each, so every
+  // playthrough has all of them somewhere on the reef rather than leaving it to a
+  // weighted roll.
   for (const cls of FISH.species) {
     const proto = models[cls.model];
     if (!proto) { console.warn(`fish model "${cls.model}" not loaded`); continue; }

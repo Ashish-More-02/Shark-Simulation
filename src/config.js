@@ -464,8 +464,16 @@ export const BITE = {
 export const FISH = {
   // Schools spread across the whole reef, by AREA (see wanderPoint). ~7 bait fish
   // per school on average, and each fish is its own draw call, so this number is
-  // not free — `species` below adds another 9-24 on top at three draw calls each.
-  schools: 9,
+  // not free — `species` below adds another 14-30 on top at three draw calls each.
+  //
+  // Came down 9 -> 6. Not for cost: with 13 generic schools against one or two of
+  // each named species, nearly every shoal you swam into was the same untextured
+  // salmon, and the reef read as one fish repeated rather than as a mix. The three
+  // schools removed here are handed to fish-2 below, which lives in the same
+  // mid-water band and so replaces them where you actually meet them. The swap is
+  // near-neutral on draw calls — ~21 single-material bait fish out, ~7 skinned
+  // fish at three calls each in.
+  schools: 6,
   // ---- AND SCHOOLS HELD TO THE MIDDLE ----
   // Equal-area spawning is correct — it is what stops every shoal bunching at the
   // origin — but it has a consequence: the inner 22-unit circle is only 11% of the
@@ -618,9 +626,10 @@ export const FISH = {
   // procedural tail flick. These rows are real skinned rigs playing their own swim
   // clip, so the school genuinely swims. That costs an AnimationMixer per fish and
   // one draw call per material (three each, and they can't be merged or instanced —
-  // a skinned mesh has to keep its own node), which is exactly why they come in
-  // ones and twos of three or four: a species you happen upon is an encounter, a
-  // species that's everywhere is wallpaper.
+  // a skinned mesh has to keep its own node), which is exactly why the reef rows
+  // come in ones and twos of three or four: a species you happen upon is an
+  // encounter, a species that's everywhere is wallpaper. fish-2 is deliberately
+  // commoner than that — see its row.
   //   model   : MODELS key
   //   schools : [min, max] schools of this species, inclusive — NOT the [min, extra]
   //             pair `count` uses
@@ -649,8 +658,15 @@ export const FISH = {
     { model: 'clownFish', schools: [1, 2], count: [3, 1], scale: [0.9, 1.3],
       spread: [3.0, 1.4, 3.0], speed: [4.6, 2.8], clip: 'Armature|Swim',     rate: 2.6,
       band: [0.02, 0.18], floorClear: 1.6, name: 'Clownfish' },
-    { model: 'fish2',     schools: [1, 2], count: [3, 1], scale: [1.0, 1.4],
-      spread: [3.6, 1.7, 3.6], speed: [4.6, 2.8], clip: 'Armature|Swim',     rate: 2.0,
+    // fish-2 is the exception to the "ones and twos" rule above: 2-3 schools of
+    // 4-6, taken out of FISH.schools rather than added on top. It shares the
+    // generic bait fish's mid-water band, so those schools turn up in the same
+    // water the plain salmon used to own — which is the whole point, the reef
+    // needed a second common fish out there, not a third rare one down on the
+    // bottom. Spread widened with the count so 5 fish still read as a shoal
+    // rather than a clump.
+    { model: 'fish2',     schools: [2, 3], count: [4, 2], scale: [1.0, 1.4],
+      spread: [4.4, 2.0, 4.4], speed: [4.6, 2.8], clip: 'Armature|Swim',     rate: 2.0,
       name: 'Reef fish' },
   ],
 };
