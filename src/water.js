@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { WORLD, WATER } from './config.js';
+import { WORLD, WATER } from './config/config.js';
 import { scene, uTime } from './core.js';
+import { worldBounds } from './levels.js';
 
 // ============================================================
 //  WATER SURFACE  — the underside of an open-ocean surface
@@ -68,7 +69,15 @@ const WAVES = /* glsl */`
 export function createWater() {
   // Segments only need to be dense enough to sample the swell's wavelength; the
   // finer chop is normal-only and needs no geometry at all.
-  const geo = new THREE.PlaneGeometry(WORLD.floor, WORLD.floor, 64, 64);
+  // Sized off the world, not a constant: the surface has to reach over every
+  // level or you swim out from under it and see the sky through the ceiling.
+  const b = worldBounds();
+  // Segment DENSITY, not a segment count: 64 across the old 400-unit plane was
+  // 6.25 units a segment, and holding that as the world grows is what stops the
+  // swell being stretched flat over a bigger surface. Vertices are nearly free
+  // here — this plane is fill-bound, not vertex-bound.
+  const seg = (n) => Math.ceil(n / 6.25);
+  const geo = new THREE.PlaneGeometry(b.width, b.depth, seg(b.width), seg(b.depth));
 
   const mat = new THREE.ShaderMaterial({
     transparent: true,
@@ -163,7 +172,7 @@ export function createWater() {
 
   const water = new THREE.Mesh(geo, mat);
   water.rotation.x = -Math.PI / 2;
-  water.position.y = WORLD.surface;
+  water.position.set(b.midX, WORLD.surface, b.midZ);
   // It never moves again — keep it out of the per-frame matrix walk (§4.4).
   water.matrixAutoUpdate = false;
   water.updateMatrix();

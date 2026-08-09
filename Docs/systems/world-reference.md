@@ -6,7 +6,7 @@ If you want to change how the ocean looks, this is the page.
 - Design *rationale* — why the world is shaped like this — is in
   [world-levels.md](world-levels.md).
 - The in-game F4 tool is in [placement-editor.md](placement-editor.md).
-- **Almost everything here lives in one file: [`src/config.js`](../../src/config.js).**
+- **Almost everything here lives in one file: [`src/config/config.js`](../../src/config/config.js).**
 
 ---
 

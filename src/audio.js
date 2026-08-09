@@ -1,4 +1,5 @@
-import { AUDIO } from './config.js';
+import { AUDIO } from './config/config.js';
+import { live } from './placement.js';
 
 // ============================================================
 //  AUDIO — plain HTMLAudioElements: three ambient loops, one loop
@@ -45,7 +46,9 @@ function playOnce(cfg) {
   // set per PLAY, not once per element. A [min,max] pair asks for a fresh random
   // rate every play, which is how the bite avoids sounding like a loop.
   const r = cfg.rate;
-  el.playbackRate = Array.isArray(r) ? r[0] + Math.random() * (r[1] - r[0]) : (r || 1);
+  // `live`, not the world seed: a bite fires when the player clicks, so there is no
+  // sense in which this is reproducible. See the split at the top of placement.js.
+  el.playbackRate = Array.isArray(r) ? r[0] + live() * (r[1] - r[0]) : (r || 1);
   el.muted = muted;
   el.currentTime = 0;          // rewind — this element may still be playing
   el.play().catch(() => {});   // ignore autoplay rejection outside a user gesture

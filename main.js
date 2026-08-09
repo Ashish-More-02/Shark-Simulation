@@ -2,7 +2,7 @@
 //  🦈 Deep Ocean Shark — entry point.
 //  Boot, then run the frame loop. All the actual work lives in src/:
 //
-//    config.js     every tunable, no logic
+//    config/       every tunable, no logic — config.js + levels/level-N.js
 //    core.js       renderer / scene / camera / shared clock
 //    levels.js     the shape of the world: floor profile, play bound, extent
 //    materials.js  caustic shader injection, particle sprites
@@ -20,7 +20,7 @@
 //    hud.js        the only module that touches the DOM
 //    world.js      composition root: builds the scene, drives updates
 // ============================================================
-import { PERF } from './src/config.js';
+import { PERF } from './src/config/config.js';
 import { renderer, scene, camera, uTime } from './src/core.js';
 import { buildWorld, updateWorld } from './src/world.js';
 import { propStats } from './src/props.js';

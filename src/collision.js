@@ -53,6 +53,24 @@ const probe = new THREE.Vector3();
 // Three spheres down the length of a body — nose, middle, tail. See resolveBody.
 const BODY_SAMPLES = [-0.72, 0, 0.72];
 
+// Drop every solid whose footprint centre falls inside a circle. Editor-only
+// (F4 erase): the props themselves are hidden by props.js clearArea, and without
+// this their colliders would stay behind as invisible walls in water that now
+// looks open. The grid is simply marked dirty and rebuilt on the next query.
+export function removeSolidsIn(x, z, r) {
+  const r2 = r * r;
+  let removed = 0;
+  for (let i = solids.length - 1; i >= 0; i--) {
+    const s = solids[i];
+    const dx = s.x - x, dz = s.z - z;
+    if (dx * dx + dz * dz > r2) continue;
+    solids.splice(i, 1);
+    removed++;
+  }
+  if (removed) gridDirty = true;
+  return removed;
+}
+
 function cellKey(cx, cz) {
   // ±2048 cells is ±32,768 world units, orders of magnitude past this world.
   return (cx + 2048) * 4096 + (cz + 2048);

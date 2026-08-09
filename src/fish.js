@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { WORLD, FISH } from './config.js';
+import { WORLD, FISH } from './config/config.js';
 import { scene } from './core.js';
 import { floorAt } from './terrain.js';
-import { ringRadius, clampRadius } from './placement.js';
+import { ringRadius, clampRadius, makeStream, live } from './placement.js';
+import { habitatY, openWaterY, headroom } from './levels.js';
 import { resolveSolids } from './collision.js';
 import { tickMixer } from './mixers.js';
 import { registerPrey } from './prey.js';
@@ -49,14 +50,32 @@ import { registerPrey } from './prey.js';
 const schools = [];
 const tmp = new THREE.Vector3();
 
-// How far out a shoal may range. Slightly past the shark's own bounds, so there
-// are always fish out at the rim of the reef and not just in the middle.
-const ROAM = WORLD.half * FISH.roam;
+// This subsystem's own slice of the world seed (placement.js). Everything a school
+// is BORN with comes from here, so the same seed lays out the same shoals: how many
+// of each species, where each one starts, how big its members are, which way it is
+// facing on the first frame.
+//
+// What it must never be used for is the steering in updateSchools — that runs off
+// `live` instead. The dividing line is BORN vs BEHAVES: a school's spawn is part of
+// the world and has to be reproducible, whereas its panic turn three minutes in
+// happens because the player swam at it, at a frame rate nothing can replay. Mixing
+// the two would also mean the fish quietly re-rolled their own spawn stream for the
+// whole session, so a second level built later would come out different.
+//
+// PER LEVEL, not one for the whole world. createSchools is called once per level,
+// and on a single stream the shallows drew first — so their school COUNTS, which
+// are random ranges, decided where every shoal on the reef ended up. Halving the
+// plain's density re-laid the reef. Each level now gets its own slice, so the two
+// cannot reach each other; `rng` is reassigned at the top of createSchools and
+// read by everything below it.
+let rng = makeStream('fish');
 
-// Fraction of the water column -> world Y. 0 = mean seabed, 1 = surface. Same
-// convention as CREATURES `band` — see config.js.
-function columnY(frac) {
-  return WORLD.seabed + frac * (WORLD.surface - WORLD.seabed);
+// How far out a shoal may range FROM ITS OWN LEVEL'S CENTRE, as a fraction of
+// that level's own play bound — so a shoal fills whatever basin it is in, and a
+// level that grows takes its fish with it. Under the bound, so the shoals are
+// always somewhere the shark can follow them.
+function roamFor(level) {
+  return level.play * FISH.roam;
 }
 
 // Shortest signed distance between two angles, so a school crossing ±π turns the
@@ -65,17 +84,32 @@ function angleDelta(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
-// A random depth inside the band.
-function bandY(band) {
-  return columnY(band[0] + Math.random() * (band[1] - band[0]));
+// A random depth inside the band, at this z.
+//
+// Two storeys, and which one a school is in is fixed when it spawns:
+//   normal — height above the SEABED (levels.js habitatY). This is where a reef
+//            shoal belongs: down among the kelp, the ferns and the boulders. The
+//            band numbers in config are read against a fixed reference span, so
+//            they mean the same height at every depth.
+//   high   — the open water above that band, which only a level deeper than the
+//            reference has any of. Without these, level 2's extra 35 units of
+//            water would be visibly empty.
+//
+// Takes its stream explicitly because it is called from BOTH sides of the split:
+// once at spawn (seeded) and again on every wander nudge (live).
+function bandY(band, z, high, draw) {
+  const f = band[0] + draw() * (band[1] - band[0]);
+  return high ? openWaterY(f, z) : habitatY(f, z);
 }
 
-// Where a school starts. Equal-area radius (placement.js): picking it uniformly is
-// what used to pack every shoal into the centre of the map. Only used at spawn —
-// there is no "next waypoint" to pick after this.
-function spawnPoint(outer, band) {
-  const a = Math.random() * Math.PI * 2, r = ringRadius(0, outer);
-  return new THREE.Vector3(Math.cos(a) * r, bandY(band), Math.sin(a) * r);
+// Where a school starts, measured from its own level's centre. Equal-area radius
+// (placement.js): picking it uniformly is what used to pack every shoal into the
+// middle of the map. Only used at spawn — there is no "next waypoint" after this.
+function spawnPoint(home, outer, band, high) {
+  const a = rng() * Math.PI * 2, r = ringRadius(0, outer, rng);
+  const x = home[0] + Math.cos(a) * r;
+  const z = home[2] + Math.sin(a) * r;
+  return new THREE.Vector3(x, bandY(band, z, high, rng), z);
 }
 
 // Weighted pick over FISH.classes — small fish should be the common sight.
@@ -83,7 +117,7 @@ function pickClass() {
   const classes = FISH.classes;
   let total = 0;
   for (const c of classes) total += c.weight;
-  let roll = Math.random() * total;
+  let roll = rng() * total;
   for (const c of classes) {
     roll -= c.weight;
     if (roll <= 0) return c;
@@ -104,30 +138,30 @@ function startClip(root, clips, cls) {
   const mixer = new THREE.AnimationMixer(root);
   const action = mixer.clipAction(clip);
   action.setLoop(THREE.LoopRepeat, Infinity);
-  const rate = cls.rate * (0.85 + Math.random() * 0.3);
+  const rate = cls.rate * (0.85 + rng() * 0.3);
   action.timeScale = rate;
   action.play();
-  action.time = Math.random() * clip.duration;   // stagger, or the school beats as one fish
+  action.time = rng() * clip.duration;   // stagger, or the school beats as one fish
   return { mixer, action, rate };
 }
 
 // `roam` is how far out THIS school may range. Defaults to the reef-wide ROAM; the
 // centerSchools rows get a much smaller one so they hold the middle ground.
-function makeSchool(proto, cls, roam = ROAM) {
+function makeSchool(proto, cls, home, roam, high = false) {
   const animated = !!cls.clip;
   // Where in the water column this school lives, and how close to the dunes its
   // centre is allowed to sit. A bottom species needs both: the band alone still
   // leaves it hovering three units up, which is above most of the plants.
   const band = cls.band || FISH.band;
   const floorClear = cls.floorClear ?? FISH.floorClear;
-  const center = spawnPoint(roam, band);
+  const center = spawnPoint(home, roam, band, high);
   const [sx, sy, sz] = cls.spread;
   const [scaleMin, scaleMax] = cls.scale;
-  const count = cls.count[0] + Math.floor(Math.random() * (cls.count[1] + 1));
+  const count = cls.count[0] + Math.floor(rng() * (cls.count[1] + 1));
   const members = [];
 
   for (let i = 0; i < count; i++) {
-    const size = scaleMin + Math.random() * (scaleMax - scaleMin);
+    const size = scaleMin + rng() * (scaleMax - scaleMin);
     // A skinned rig MUST go through SkeletonUtils.clone: plain clone() duplicates
     // the bones but leaves every copy bound to the PROTOTYPE's skeleton, so the
     // whole school would deform as a single fish (and inherit its position too).
@@ -137,19 +171,19 @@ function makeSchool(proto, cls, roam = ROAM) {
     f.rotation.order = 'YXZ';
     scene.add(f);
     const clip = animated ? startClip(f, proto.clips, cls) : null;
-    const phase = Math.random() * Math.PI * 2;
+    const phase = rng() * Math.PI * 2;
     const m = {
       obj: f,
       offset: new THREE.Vector3(
-        (Math.random() - 0.5) * sx,
-        (Math.random() - 0.5) * sy,
-        (Math.random() - 0.5) * sz
+        (rng() - 0.5) * sx,
+        (rng() - 0.5) * sy,
+        (rng() - 0.5) * sz
       ),
       phase,
       // Tail beat scales inversely with length: a 3 cm fry flickers, a big fish
       // makes slow deliberate strokes. Keeps the shoal from looking like one
       // animation played at N scales.
-      wobble: (0.4 + Math.random() * 0.7) / Math.sqrt(size),
+      wobble: (0.4 + rng() * 0.7) / Math.sqrt(size),
       // ACCUMULATED tail-beat phase for the procedural fish. It has to accumulate
       // rather than being sin(t * rate): the rate now tracks how hard the fish is
       // swimming, and sin() of a time multiplied by a changing rate jumps every time
@@ -188,11 +222,15 @@ function makeSchool(proto, cls, roam = ROAM) {
     });
   }
 
-  const speed = cls.speed[0] + Math.random() * cls.speed[1];
-  const yaw = Math.random() * Math.PI * 2;
+  const speed = cls.speed[0] + rng() * cls.speed[1];
+  const yaw = rng() * Math.PI * 2;
 
   schools.push({
-    center, members, animated, band, floorClear, roam, speed,
+    center, members, animated, band, floorClear, roam, speed, high,
+    // The basin this shoal belongs to. Everything radial below — the edge turn,
+    // the position clamp — is measured from here rather than from the origin, so
+    // a level-1 school holds level 1 instead of being dragged toward level 2.
+    hx: home[0], hz: home[2],
     // ---- steering state ----
     yaw,                  // heading of travel in the XZ plane, as (cos yaw, sin yaw)
     wantYaw: yaw,         // heading it is turning toward
@@ -201,7 +239,7 @@ function makeSchool(proto, cls, roam = ROAM) {
     // Max turn rate. Scaled DOWN by the formation's width, so a wide school of big
     // fish arcs and a tight cloud of fry can flick round — the same trick creatures.js
     // uses to make a whale feel heavy next to a dolphin.
-    turn: (FISH.turnRate[0] + Math.random() * FISH.turnRate[1]) / (1 + Math.max(sx, sz) * 0.06),
+    turn: (FISH.turnRate[0] + rng() * FISH.turnRate[1]) / (1 + Math.max(sx, sz) * 0.06),
     vel: new THREE.Vector3(),   // derived each frame from yaw/spd, for facing + pitch
     radius: Math.max(sx, sz) * 0.5,   // the formation's own half-width, for collision
     retarget: 0,      // seconds until the next wander nudge
@@ -211,23 +249,47 @@ function makeSchool(proto, cls, roam = ROAM) {
   });
 }
 
-export function createSchools(models) {
-  for (let i = 0; i < FISH.schools; i++) makeSchool(models.fish, pickClass());
+// Populate one level. `density` scales every count for a level that should feel
+// emptier than the reef — level 1 is a plain, and a plain with a full reef's worth
+// of fish in it is not a plain.
+export function createSchools(models, level, density = 1) {
+  rng = makeStream(`fish:${level.id}`);
+  const home = level.center;
+  const ROAM = roamFor(level);
+  const scale = (n) => Math.max(1, Math.round(n * density));
+
+  for (let i = 0; i < scale(FISH.schools); i++) makeSchool(models.fish, pickClass(), home, ROAM);
+
+  // ---- THE UPPER STOREY ----
+  // Only in levels with water to spare above the habitat band. Level 1's column IS
+  // the reference span, so it gets none and stays a plain with fish on the sand;
+  // level 2 has 35 units over the reef and would look abandoned up there without
+  // these. Same bait fish, just riding higher — so looking up from the reef shows
+  // shoals crossing overhead, and the shark can hunt at two heights.
+  if (headroom(level.seabed) > FISH.highMinRoom) {
+    for (let i = 0; i < scale(FISH.highSchools); i++) {
+      makeSchool(models.fish, { ...pickClass(), band: FISH.highBand }, home, ROAM, true);
+    }
+  }
 
   // Schools that hold the middle of the basin — the water the shark starts in and
   // patrols, which equal-area placement leaves nearly empty. See centerSchools.
   const inner = ROAM * FISH.centerRoam;
-  for (let i = 0; i < FISH.centerSchools; i++) makeSchool(models.fish, pickClass(), inner);
+  for (let i = 0; i < scale(FISH.centerSchools); i++) {
+    makeSchool(models.fish, pickClass(), home, inner);
+  }
 
   // The named species on top: a fixed small count of schools each, so every
   // playthrough has all of them somewhere on the reef rather than leaving it to a
-  // weighted roll.
+  // weighted roll. Species are per-level too — `only` restricts a row to one
+  // level's id, which is how the reef keeps a species the shallows doesn't have.
   for (const cls of FISH.species) {
+    if (cls.only && cls.only !== level.id) continue;
     const proto = models[cls.model];
     if (!proto) { console.warn(`fish model "${cls.model}" not loaded`); continue; }
     const [lo, hi] = cls.schools;
-    const n = lo + Math.floor(Math.random() * (hi - lo + 1));
-    for (let i = 0; i < n; i++) makeSchool(proto, cls);
+    const n = scale(lo + Math.floor(rng() * (hi - lo + 1)));
+    for (let i = 0; i < n; i++) makeSchool(proto, cls, home, ROAM);
   }
   return schools;
 }
@@ -244,13 +306,13 @@ export function updateSchools(dt, t, sharkPos) {
     // ---- WANDER: nudge the heading ----
     s.retarget -= dt;
     if (s.retarget <= 0) {
-      s.retarget = FISH.wanderDwell[0] + Math.random() * FISH.wanderDwell[1];
+      s.retarget = FISH.wanderDwell[0] + live() * FISH.wanderDwell[1];
       // A frightened school is not sightseeing — leave its escape line alone. And
       // note this timer runs down normally either way, so unlike the version that
       // pinned it every frame there is no state it can get stuck in.
       if (!alarmed) {
-        s.wantYaw = s.yaw + (Math.random() * 2 - 1) * FISH.wanderTurn;
-        s.wantY = bandY(s.band);
+        s.wantYaw = s.yaw + (live() * 2 - 1) * FISH.wanderTurn;
+        s.wantY = bandY(s.band, s.center.z, s.high, live);
       }
     }
 
@@ -261,7 +323,7 @@ export function updateSchools(dt, t, sharkPos) {
       const ax = s.center.x - sharkPos.x, az = s.center.z - sharkPos.z;
       const awayYaw = ax * ax + az * az > 1e-6
         ? Math.atan2(az, ax)
-        : Math.random() * Math.PI * 2;      // shark exactly on top of them
+        : live() * Math.PI * 2;             // shark exactly on top of them
 
       // Take a FRACTION of the turn toward straight-away, so a school already
       // running keeps its line and simply puts on speed — that is what reads as
@@ -273,7 +335,7 @@ export function updateSchools(dt, t, sharkPos) {
       const take = Math.min(mag, Math.max(mag * FISH.escapeTurn, mag - FISH.escapeCone));
       s.wantYaw = s.yaw + Math.sign(d) * take;
       // Break through open water, not into the sand or up through the surface.
-      s.wantY = bandY(s.band);
+      s.wantY = bandY(s.band, s.center.z, s.high, live);
 
       s.sprint = FISH.sprintTime;
       s.sprintCd = FISH.sprintCooldown;
@@ -284,10 +346,10 @@ export function updateSchools(dt, t, sharkPos) {
     // position below, but a school should never actually reach it: the pressure to
     // come about ramps up from `edgeMargin` to the boundary, so it arcs round while
     // still swimming — which is exactly the sweep along the mountain line.
-    const r = Math.hypot(s.center.x, s.center.z);
+    const r = Math.hypot(s.center.x - s.hx, s.center.z - s.hz);
     const edge = s.roam * FISH.edgeMargin;
     if (r > edge) {
-      const inward = Math.atan2(-s.center.z, -s.center.x);
+      const inward = Math.atan2(s.hz - s.center.z, s.hx - s.center.x);
       const push = Math.min((r - edge) / Math.max(s.roam - edge, 0.001), 1);
       s.wantYaw += angleDelta(s.wantYaw, inward) * Math.min(push * dt * FISH.edgeTurn, 1);
     }
@@ -312,7 +374,7 @@ export function updateSchools(dt, t, sharkPos) {
     s.center.addScaledVector(s.vel, dt);
 
     // keep the shoal inside its own range and off the seabed
-    clampRadius(s.center, s.roam);
+    clampRadius(s.center, s.roam, s.hx, s.hz);
     s.center.y = THREE.MathUtils.clamp(s.center.y, floorAt(s.center.x, s.center.z, s.floorClear), WORLD.surface - 2.5);
 
     // Steer the whole shoal around rock, using the school's own volume as the
@@ -323,7 +385,7 @@ export function updateSchools(dt, t, sharkPos) {
       // Come about, rather than grinding along the face for the rest of the leg.
       // A random side: the alternative is deriving one from the contact normal,
       // which resolveSolids doesn't report, and a coin flip looks the same.
-      s.wantYaw = s.yaw + (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.9);
+      s.wantYaw = s.yaw + (live() < 0.5 ? -1 : 1) * (0.7 + live() * 0.9);
       // The push is horizontal, so re-seat above the dunes at the new x/z.
       s.center.y = Math.max(s.center.y, floorAt(s.center.x, s.center.z, s.floorClear));
     }

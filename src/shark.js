@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { WORLD, SHARK, MODELS, BITE, STAMINA } from './config.js';
+import { WORLD, SHARK, MODELS, BITE, STAMINA } from './config/config.js';
 import { scene, camera } from './core.js';
 import { floorAt } from './terrain.js';
+import { clampToWorld } from './levels.js';
 import { resolveSolids, resolveBody } from './collision.js';
 import { turnAxis, pitchAxis, thrustAxis, boosting, consumeMouseLook } from './input.js';
 import { preyStats } from './prey.js';
@@ -134,8 +135,11 @@ export function updateShark(dt, t) {
   // --- bounds (follow the dunes so the shark never clips into the sand) ---
   // Clearances scale with the animal: a 12-unit shark that keeps a 6-unit shark's
   // 1.8 off the sand is swimming with half its belly in it.
-  obj.position.x = THREE.MathUtils.clamp(obj.position.x, -WORLD.half, WORLD.half);
-  obj.position.z = THREE.MathUtils.clamp(obj.position.z, -WORLD.half, WORLD.half);
+  // Horizontal bound is the union of every basin's disc and the canyon between
+  // them (levels.js) — not a box any more, because the world is no longer one
+  // basin and a box around two of them would let you swim across open sand from
+  // one to the other without ever using the corridor.
+  clampToWorld(obj.position);
   obj.position.y = THREE.MathUtils.clamp(
     obj.position.y,
     floorAt(obj.position.x, obj.position.z, SHARK.floorClearance * scale),

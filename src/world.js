@@ -1,4 +1,5 @@
-import { MODELS, PROPS, SHARK } from './config.js';
+import { MODELS, SHARK, ORBS } from './config/config.js';
+import { LEVELS, PROPS, PROPS_PLAIN } from './config/levels/index.js';
 import { createBackdrop, createLights, renderer, scene, camera } from './core.js';
 import { loadAll } from './loader.js';
 import { createSeabed } from './terrain.js';
@@ -11,6 +12,7 @@ import { createCreatures, updateCreatures } from './creatures.js';
 import { createOrbs, updateOrbs } from './orbs.js';
 import { createShark, updateShark, sharkState, depthMetres, sharkLength } from './shark.js';
 import { updateBite } from './bite.js';
+import { initEditor, updateEditor } from './editor.js';
 import { preyStats, nearestTracked } from './prey.js';
 import { setDepth, setSpeed, setEaten, setSize, setTrack, setStamina } from './hud.js';
 import { updateSwim } from './audio.js';
@@ -34,10 +36,27 @@ export async function buildWorld() {
   const models = await loadAll(MODELS);
 
   createShark(models.shark);
-  scatterAll(PROPS, models);
-  createSchools(models);
+  initEditor(models);      // F4 placement editor — see src/editor.js
+
+  // ---- POPULATE EACH LEVEL --------------------------------------------------
+  // Level 1 is the shallows: a bare plain with a thin prop table, half the shoals
+  // and a third of the orbs. Level 2 is the reef exactly as it always was, and
+  // it keeps every creature — the whales, dolphins and anglerfish only live
+  // deeper, which is the first thing the descent teaches without a word of text.
+  //
+  // Both levels are built up front and stay resident. That is affordable at two
+  // small basins and is NOT the long-term plan: see Docs/systems/world-levels.md
+  // §5 for the streaming manager this loop is shaped to accept.
+  const [shallows, reef] = LEVELS;
+
+  scatterAll(PROPS_PLAIN, models, shallows);
+  createSchools(models, shallows, 0.5);
+  createOrbs(shallows, Math.round(ORBS.count / 3));
+
+  scatterAll(PROPS, models, reef);
+  createSchools(models, reef);
   createCreatures(models);
-  createOrbs();
+  createOrbs(reef);
 
   // Compile every program NOW, while the start screen is still up (§6). Otherwise
   // each material compiles the first time it is drawn, and the opening seconds of
@@ -83,6 +102,10 @@ export function updateWorld(dt, t) {
   setEaten(preyStats.eaten);
   setSize(sharkLength());
   setStamina(sharkState.stamina, sharkState.boostHeld, sharkState.staminaSpent, sharkState.scale);
+
+  // Last, so the ghost sits on the shark's FINAL position this frame rather than
+  // trailing it by one.
+  updateEditor();
 
   // Bearing to the nearest whale / dolphin / anglerfish. Screen-right is
   // cross(forward, up) = (-fz, 0, fx), so the target's right- and forward-

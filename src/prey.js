@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BITE } from './config.js';
+import { BITE } from './config/config.js';
 
 // ============================================================
 //  PREY  — every animal the shark can bite, in one flat registry.

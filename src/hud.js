@@ -21,6 +21,7 @@ const el = {
   mute:     document.getElementById('mute'),
   perf:     document.getElementById('perf'),
   stamina:  document.getElementById('stamina'),
+  editor:   document.getElementById('editor'),
 };
 
 // Cache the last values so we only touch the DOM when the text actually changes
@@ -35,11 +36,19 @@ export function setDepth(metres) {
   el.depth.textContent = `${metres} m`;
 }
 
+// One world unit is one metre — the same unit setDepth and setSize already print,
+// anchored on the 6.0-unit shark model being a 6 m animal. `speed` arrives in
+// units/second, i.e. m/s, so real-world mph is a straight x2.23694: drag pins
+// cruise at accel/drag = 12.2 m/s = 27 mph, and boostSpeed clamps sprint at
+// 15.2 m/s = 34 mph. Whole mph is both what a speedo shows and coarse enough
+// (0.45 m/s a step) that a steady cruise stops rewriting the node every frame.
+const MPH = 2.23694;
+
 export function setSpeed(speed) {
-  const s = speed.toFixed(1);
+  const s = Math.round(speed * MPH);
   if (s === lastSpeed) return;
   lastSpeed = s;
-  el.speed.textContent = s;
+  el.speed.textContent = `${s} mph`;
 }
 
 export function setOrbs(collected, total) {
@@ -165,6 +174,17 @@ export function wirePerfToggle() {
     perfOn = !perfOn;
     el.perf.classList.toggle('hidden', !perfOn);
   });
+}
+
+// ---- PLACEMENT EDITOR READOUT (F4) -----------------------------------------
+// editor.js owns the state and composes the text; this only puts it on screen,
+// so hud.js stays the one module that touches the DOM.
+export function setEditorPanel(html) {
+  el.editor.innerHTML = html;
+}
+
+export function showEditorPanel(visible) {
+  el.editor.classList.toggle('hidden', !visible);
 }
 
 export function showControls() {

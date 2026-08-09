@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { WORLD, ORBS, BITE } from './config.js';
+import { ORBS, BITE } from './config/config.js';
 import { scene } from './core.js';
 import { floorAt } from './terrain.js';
 import { softSprite } from './materials.js';
-import { ringRadius } from './placement.js';
+import { ringRadius, makeStream } from './placement.js';
 import { insideSolid } from './collision.js';
 import { setOrbs } from './hud.js';
 import { playCollectSound } from './audio.js';
@@ -21,7 +21,20 @@ import { addPoints } from './prey.js';
 const orbs = [];
 let total = 0;
 
-export function createOrbs() {
+// This subsystem's slice of the world seed (placement.js). Orbs are placed once and
+// never move, so there is no live half here — every draw below is generation.
+//
+// Its own stream matters more than most: the retry loop below runs a VARIABLE
+// number of times, so on a shared sequence the orbs would shift everything built
+// after them by an amount nobody could predict. Here it shifts nothing but orbs.
+//
+// And per LEVEL, for the same reason again one level down: the shallows' orbs are
+// placed first and their retries are unpredictable, so on one shared stream they
+// decided where the reef's orbs went. Reassigned at the top of createOrbs.
+let rng = makeStream('orbs');
+
+export function createOrbs(level, count = ORBS.count) {
+  rng = makeStream(`orbs:${level.id}`);
   // ONE geometry, ONE orb material, ONE halo material for all of them (§3.7).
   // Every orb used to build its own MeshStandardMaterial and its own
   // SpriteMaterial: 24 material instances for 24 draw calls, so every orb was also
@@ -40,30 +53,35 @@ export function createOrbs() {
     blending: THREE.AdditiveBlending, opacity: 0.85,
   });
 
-  for (let i = 0; i < ORBS.count; i++) {
+  const [ox, , oz] = level.center;
+
+  for (let i = 0; i < count; i++) {
     const orb = new THREE.Mesh(geo, orbMat);
     // Equal-area radius (placement.js), so the orbs are spread across the whole
     // reef instead of bunched near the start point. Outer bound stays inside
-    // WORLD.half — every orb has to be somewhere the shark can actually reach.
+    // the level bound — every orb has to be somewhere the shark can actually reach.
     // Keep drawing positions until one is clear of the rock. The shark can no
     // longer enter a solid, so an orb buried in a boulder is flatly uncollectable
     // and the run unwinnable — with nothing on screen to explain why.
     //
     // Retry rather than push it out: a push lands the orb wherever the shove
     // happens to leave it, and being shoved off a big peak could put it outside
-    // WORLD.half entirely — out of the shark's own bounds, which is the very
+    // the bound entirely — out of the shark's own reach, which is the very
     // problem we're avoiding. ~18% of the near-seabed area is solid, so a clear
     // draw is near-certain within a handful of tries.
     let x, z, y;
     for (let tries = 0; tries < 16; tries++) {
-      const a = Math.random() * Math.PI * 2, r = ringRadius(8, WORLD.half * 0.92);
-      x = Math.cos(a) * r;
-      z = Math.sin(a) * r;
-      y = floorAt(x, z, 3 + Math.random() * 16);
+      // Off this LEVEL's bound, not a global constant, so orbs fill whatever
+      // basin they were asked for. Inside it: an orb the shark cannot reach is an
+      // unwinnable run with nothing on screen to explain why.
+      const a = rng() * Math.PI * 2, r = ringRadius(8, level.play * 0.9, rng);
+      x = ox + Math.cos(a) * r;
+      z = oz + Math.sin(a) * r;
+      y = floorAt(x, z, 3 + rng() * 16);
       if (!insideSolid(x, y, z, ORBS.collectRadius + 1)) break;
     }
     orb.position.set(x, y, z);
-    orb.userData.phase = Math.random() * Math.PI * 2;
+    orb.userData.phase = rng() * Math.PI * 2;
 
     const halo = new THREE.Sprite(haloMat);
     halo.scale.setScalar(3.4);
@@ -73,6 +91,8 @@ export function createOrbs() {
     orbs.push(orb);
   }
 
+  // Accumulates across levels — createOrbs is called once per level and `orbs` is
+  // module state, so this is the running world total, not this level's count.
   total = orbs.length;
   setOrbs(0, total);
   return orbs;

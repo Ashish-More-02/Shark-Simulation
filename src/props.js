@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { WORLD, PERF } from './config.js';
+import { WORLD, PERF } from './config/config.js';
 import { scene, camera, uTime } from './core.js';
 import { floorAt } from './terrain.js';
-import { ringRadius } from './placement.js';
-import { addSolid } from './collision.js';
+import { ringRadius, angleDelta, makeStream } from './placement.js';
+import { addSolid, removeSolidsIn } from './collision.js';
 
 // ============================================================
 //  SEABED PROPS  — instanced, spatially chunked, swayed on the GPU
@@ -77,13 +77,15 @@ function ensureVertexColorAttribute(geometry) {
 
 // Pick one natural rock colour: a palette entry, nudged in hue, saturation and
 // lightness so neighbours never match.
-function rockColour(palette, keepTexture) {
-  const c = color.set(palette[Math.floor(Math.random() * palette.length)]);
+//
+// `draw` is the INSTANCE's own stream, not a row-wide one — see planInstances.
+function rockColour(palette, keepTexture, draw) {
+  const c = color.set(palette[Math.floor(draw() * palette.length)]);
   // Hue/saturation drift only. Lightness is a linear multiply instead of an HSL
   // offset, because an HSL lightness offset clamps the darkest basalt picks all
   // the way to #000 — and pure black reads as a hole in the scene, not as rock.
-  c.offsetHSL((Math.random() - 0.5) * 0.05, (Math.random() - 0.5) * 0.12, 0);
-  c.multiplyScalar(0.78 + Math.random() * 0.46);
+  c.offsetHSL((draw() - 0.5) * 0.05, (draw() - 0.5) * 0.12, 0);
+  c.multiplyScalar(0.78 + draw() * 0.46);
 
   if (keepTexture) {
     // This model ships its own albedo, and the tint MULTIPLIES it — a near-black
@@ -94,7 +96,7 @@ function rockColour(palette, keepTexture) {
     // white blows dark picks out far too fast.)
     const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     if (lum > 1e-4) {
-      c.multiplyScalar((0.30 + Math.random() * 0.18) / lum);
+      c.multiplyScalar((0.30 + draw() * 0.18) / lum);
       c.r = Math.min(c.r, 1); c.g = Math.min(c.g, 1); c.b = Math.min(c.b, 1);
     }
   }
@@ -117,21 +119,165 @@ function collectMeshes(proto) {
   return out;
 }
 
+// ---- PATCHINESS ------------------------------------------------------------
+// A real seabed is a MOSAIC, and this is the single biggest thing that separates
+// it from a scatter: a seagrass meadow, then bare rippled sand, then a rocky
+// outcrop crusted with growth, then sand again. Nothing in the sea is evenly
+// spaced. Equal-area sampling (placement.js) fixed the opposite artefact — every
+// prop bunched at the origin — but what it produces is *perfectly uniform*
+// density, and uniform density at any density reads as empty: there is nowhere
+// dense to be, so everywhere looks the same and nowhere looks like somewhere.
+//
+// So a row can name a `clump`, and most of its instances gather around a handful
+// of seed points instead of spreading out. The same prop count then reads as far
+// richer, because the eye judges "is this place full" locally, and it buys real
+// open sand between the patches — which is also what makes a plain a plain rather
+// than a thin sprinkle of everything.
+//
+//   key    : rows sharing a key share their seed points. This is the substrate
+//            rule: kelp needs hard ground to hold onto and does not grow out of
+//            open sand, so the kelp rows share the ROCK rows' seeds and the
+//            forests end up growing on the outcrops. One shared string does more
+//            for how natural the reef looks than any amount of extra geometry.
+//   seeds  : how many patches
+//   radius : how far a patch reaches
+//   frac   : 0..1 of the row that clumps; the rest still scatters, so a patch has
+//            stragglers around it instead of a hard edge.
+const seedCache = new Map();
+
+// Each patch centre gets its OWN stream, keyed by the shared clump key and the
+// patch's index — for the same reason every instance does (see planInstances).
+// Raising `seeds` from 7 to 8 therefore ADDS an eighth patch and leaves the other
+// seven exactly where they were, instead of re-rolling the whole mosaic.
+//
+// The ring/gap still come from whichever row first asked for this key, so the
+// patches of a shared substrate follow that row's band. Nothing else about the
+// row reaches them.
+function clumpSeeds(level, clump, ring, gap, gapHalf, streamName) {
+  const key = `${level.id}:${clump.key || streamName}`;
+  let seeds = seedCache.get(key);
+  if (seeds) return seeds;
+
+  seeds = [];
+  for (let i = 0; i < clump.seeds; i++) {
+    const { a, r } = drawBearing(ring, gap, gapHalf, makeStream(`clump:${key}#${i}`));
+    seeds.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });   // level-local
+  }
+  seedCache.set(key, seeds);
+  return seeds;
+}
+
+// One equal-area draw inside the ring, redrawing the bearing until it misses the
+// gap. Bounded: a gap is at most a third of the circle, so eight tries lands
+// outside it with probability ~0.9997, and falling through on the rare miss puts
+// one peak in the mouth rather than looping forever.
+//
+// The variable retry count is exactly why this must be handed an instance-local
+// stream: on a row-wide one, whether instance 12 needed two tries or one decides
+// where instances 13 onward land.
+function drawBearing(ring, gap, gapHalf, draw) {
+  let a = 0;
+  for (let t = 0; t < 8; t++) {
+    a = draw() * Math.PI * 2;
+    if (gap === null || Math.abs(angleDelta(a, gap)) > gapHalf) break;
+  }
+  return { a, r: ringRadius(ring[0], ring[1], draw) };
+}
+
 // Build the instance list (transform + colour) for one PROPS row.
 //
 // The default ring reaches PAST the play area (WORLD.half) and out toward the
 // mountain skirt, so the reef doesn't just stop at an invisible wall — you can
 // see it continuing into the haze past where you're allowed to swim.
-function planInstances(count, opts, keepTexture) {
+//
+// ---- EVERY INSTANCE OWNS ITS SEED (and why that is the whole point) --------
+// This row used to draw from one shared stream, which made a PRNG's defining
+// property — that it is a SEQUENCE — into the enemy of authoring. Every draw
+// decided the next one, so:
+//
+//   * raising a row's `count` by one re-rolled every row built after it;
+//   * adding a `fixed` entry moved scenery on the other side of the level;
+//   * a `clear` circle, which DROPS candidates, changed how many draws the row
+//     consumed and shifted everything downstream of it;
+//   * and level 1 drawing first meant any edit to the plain re-rolled the reef.
+//
+// So you could not tailor a world. You could only keep re-rolling it and hope to
+// like the next one — which is the same problem the seed itself was introduced to
+// fix (placement.js), one level down.
+//
+// The fix is to stop treating placement as a sequence at all. Instance i draws
+// from a stream derived from `<level>:<row>@i` — its own coordinates in the
+// world's namespace — so it is a pure FUNCTION of (seed, level, row, index) and
+// nothing else. Nothing before it in the row can move it, and nothing after it
+// can either. Concretely, all of these are now safe edits:
+//
+//   count 40 -> 45   the 40 you have stay; five new ones appear
+//   count 40 -> 35   five disappear; the rest do not move
+//   add a `clear`    scenery vanishes inside the circle, and ONLY there
+//   add a `fixed`    hand-placed props no longer disturb the scatter at all
+//   reorder rows     rows are named, not numbered — order stops mattering
+//   edit level 1     cannot reach level 2, because the level id is in the name
+//
+// The cost is one 32-bit string hash per instance (makeStream), a few thousand
+// times at load. That is nothing, and it buys a world you can actually edit.
+function planInstances(count, opts, keepTexture, level, streamName) {
   const { sMin = 0.7, sMax = 1.5, ring = [6, WORLD.half * 1.35],
-          shade = 0, sway = 0, tilt = 0, palette = null, edgeScale = 0 } = opts;
+          shade = 0, sway = 0, tilt = 0, palette = null, edgeScale = 0,
+          clump = null, sink = 0 } = opts;
   const span = Math.max(ring[1] - ring[0], 1e-6);
   const items = [];
 
+  // Every ring is measured from this level's own centre, so level 2 (centred on
+  // the origin) places exactly where it always did.
+  const ox = level.center[0], oz = level.center[2];
+
+  // The mountain ring gets an opening facing the canyon, on rows flagged `gap`.
+  // Without it the peaks would wall the corridor mouth off and the only route
+  // between the levels would be blocked by the scenery guarding it.
+  const gap = opts.gap ? level.gapDir : null;
+  const gapHalf = opts.gap || 0;
+  const seeds = clump ? clumpSeeds(level, clump, ring, gap, gapHalf, streamName) : null;
+
+  // Ground this level has declared bare (LEVELS[n].clear). A candidate landing
+  // inside one is DROPPED, not redrawn somewhere else: clearing an area is a
+  // statement that there should be less here, and quietly re-homing the props
+  // just moves the density you were trying to remove into the neighbouring sand.
+  const clear = level.clear || [];
+
   for (let i = 0; i < count; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = ringRadius(ring[0], ring[1]);       // equal-area — see placement.js
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    // This instance's own stream. Every draw below comes from it and from nothing
+    // else, which is what makes instance i independent of instances 0..i-1.
+    const draw = makeStream(`${streamName}@${i}`);
+
+    let lx, lz;
+    if (seeds && seeds.length && draw() < clump.frac) {
+      // sqrt() so a patch fills evenly rather than packing into its own middle —
+      // the same equal-area correction the ring draw makes, at patch scale.
+      const s = seeds[Math.floor(draw() * seeds.length)];
+      const cr = clump.radius * Math.sqrt(draw());
+      const ca = draw() * Math.PI * 2;
+      lx = s.x + Math.cos(ca) * cr;
+      lz = s.z + Math.sin(ca) * cr;
+    } else {
+      const d = drawBearing(ring, gap, gapHalf, draw);
+      lx = Math.cos(d.a) * d.r;
+      lz = Math.sin(d.a) * d.r;
+    }
+    // Safe to bail out mid-instance now: the draws this instance would still have
+    // made were its own, so skipping them cannot move anything else. On the old
+    // shared stream this `continue` was precisely what made a `clear` circle
+    // re-roll every prop placed after it.
+    let dropped = false;
+    for (const c of clear) {
+      const dx = lx - c.x, dz = lz - c.z;
+      if (dx * dx + dz * dz < c.r * c.r) { dropped = true; break; }
+    }
+    if (dropped) continue;
+
+    // Measured after placement, not before, so a clumped instance's size gradient
+    // still tracks where it actually ended up.
+    const r = Math.hypot(lx, lz);
+    const x = ox + lx, z = oz + lz;
 
     // Size can either be flat random across the row, or biased outward: the
     // sheltered deep water at the rim grows the tall stuff, while the open middle
@@ -139,32 +285,110 @@ function planInstances(count, opts, keepTexture) {
     // much of the size comes from radius vs. how much stays random, so 1 is a
     // strict gradient and 0.7 is a gradient you can still see exceptions in.
     const radial = (r - ring[0]) / span;
-    const sizeK = edgeScale ? edgeScale * radial + (1 - edgeScale) * Math.random()
-                            : Math.random();
+    const sizeK = edgeScale ? edgeScale * radial + (1 - edgeScale) * draw()
+                            : draw();
+
+    const scale = sMin + sizeK * (sMax - sMin);
+
+    // Drawn UNCONDITIONALLY, then scaled by the row's setting — including when
+    // that setting is 0. `tilt ? draw() : 0` would make the row's lean decide
+    // whether the two draws after it happen, so turning tilt off would re-roll
+    // this instance's sway phase. Same argument as everything else here: a knob
+    // should change what it names and nothing else.
+    const rotY = draw() * Math.PI * 2;
+    const tiltK = draw() - 0.5;
+    const phase = draw() * Math.PI * 2;
+    const ampK = 0.6 + draw() * 0.8;
 
     // instanceColor multiplies the material colour, so:
     //   palette rows -> material goes white, the palette colour lives here
     //   shade rows    -> material keeps its own colour, this is a grey multiplier
+    //
+    // LAST, because it is the only draw here whose COUNT varies — a palette row
+    // takes three or four, a shade row one, a plain row none. Anything after it
+    // would move when you recoloured the row.
     let tint;
     if (palette) {
-      tint = rockColour(palette, keepTexture).clone();
+      tint = rockColour(palette, keepTexture, draw).clone();
     } else if (shade) {
-      const grey = 1 - shade + Math.random() * shade * 2;
+      const grey = 1 - shade + draw() * shade * 2;
       tint = new THREE.Color(grey, grey, grey);
     } else {
       tint = new THREE.Color(1, 1, 1);
     }
 
     items.push({
-      x, z, y: floorAt(x, z),
-      rotY: Math.random() * Math.PI * 2,
-      tilt: tilt ? (Math.random() - 0.5) * tilt : 0,
-      scale: sMin + sizeK * (sMax - sMin),
+      // `sink` buries the base. A model whose footprint is flat-bottomed sits on
+      // ONE sampled height, so on any slope — and the canyon is all slope — one
+      // side of it lifts off the sand and you can see under it. Pushing it down
+      // by a few units costs nothing, hides the gap, and is what a landform
+      // actually does: rock comes up THROUGH sediment, it is not set on top of it.
+      x, z, y: floorAt(x, z) - sink * scale,
+      rotY,
+      tilt: tilt ? tiltK * tilt : 0,
+      scale,
       tint,
-      phase: Math.random() * Math.PI * 2,
-      amp: sway ? sway * (0.6 + Math.random() * 0.8) : 0,
+      phase,
+      amp: sway ? sway * ampK : 0,
     });
   }
+
+  // ---- HAND-PLACED INSTANCES -------------------------------------------------
+  // Everything above is scattered; these are put somewhere on purpose. A world
+  // made only of statistics has no landmarks in it, and a landmark is the one
+  // thing a scatter can never produce — you cannot ask a random ring for "two
+  // peaks flanking the canyon mouth".
+  //
+  // Coordinates are LEVEL-LOCAL, so a row can be reused by any level and lands in
+  // the right place relative to that basin's centre. `scale` is absolute here
+  // rather than being drawn from sMin..sMax — the whole point is that it is chosen.
+  // `n` and `spread` turn one entry into a thicket: n instances jittered inside a
+  // `spread` radius with their scale varied by `jitter`. That is what lets a
+  // single config line say "a stand of kelp, there", which a scatter row cannot
+  // express and which hand-placing thirty coordinates would be absurd for.
+  // Keyed on WHERE it was placed, not on its position in the array. A hand-placed
+  // prop's rotation, jitter and colour are therefore a property of the spot you
+  // put it in: paste a new entry at the top of the list, reorder them, delete one
+  // from the middle — the rest are untouched, because none of them is defined by
+  // its neighbours. Two entries at the exact same coordinates would share a
+  // stream and come out identical, which is a degenerate placement anyway.
+  for (const f of opts.fixed || []) {
+    const n = f.n ?? 1;
+    const at = `${streamName}:fixed:${f.x.toFixed(2)},${f.z.toFixed(2)}`;
+    for (let i = 0; i < n; i++) {
+      const draw = makeStream(`${at}#${i}`);
+      let lx = f.x, lz = f.z;
+      if (n > 1 && f.spread) {
+        const cr = f.spread * Math.sqrt(draw());
+        const ca = draw() * Math.PI * 2;
+        lx += Math.cos(ca) * cr;
+        lz += Math.sin(ca) * cr;
+      }
+      const x = ox + lx, z = oz + lz;
+      const jitter = f.jitter ?? 0;
+      // Same discipline as the scatter loop: draw everything unconditionally, then
+      // let the entry override it. `f.rotY ?? draw()` would skip the draw whenever
+      // you pinned a rotation by hand and re-roll the rest of the entry with it.
+      const scale = (f.scale ?? 1) * (1 + (draw() - 0.5) * 2 * jitter);
+      const rotY = draw() * Math.PI * 2;
+      const tiltK = draw() - 0.5;
+      const phase = draw() * Math.PI * 2;
+      const ampK = 0.6 + draw() * 0.8;
+      items.push({
+        x, z, y: floorAt(x, z) - (f.sink ?? sink) * scale,
+        rotY: f.rotY ?? rotY,
+        tilt: f.tilt ?? (tilt ? tiltK * tilt : 0),
+        scale,
+        // Tint last, for the reason given in the scatter loop above.
+        tint: palette ? rockColour(palette, keepTexture, draw).clone()
+            : shade ? (() => { const g = 1 - shade + draw() * shade * 2; return new THREE.Color(g, g, g); })()
+            : new THREE.Color(1, 1, 1),
+        phase,
+        amp: sway ? sway * ampK : 0,
+      });
+    }
+  }
+
   return { items, palette, sway };
 }
 
@@ -345,12 +569,12 @@ function cellKey(x, z, size) {
   return (Math.floor(x / size) + 2048) * 4096 + (Math.floor(z / size) + 2048);
 }
 
-function buildRow(proto, count, opts) {
+function buildRow(proto, count, opts, level, streamName) {
   const parts = collectMeshes(proto);         // also zeroes + updates proto's matrices
   const protoScale = proto.scale.x;           // uniform normalization scale
   // Measured with proto.scale applied, so this is world units at item.scale = 1.
   const protoSize = new THREE.Box3().setFromObject(proto).getSize(new THREE.Vector3());
-  const { items, palette, sway } = planInstances(count, opts, proto.hasTexture);
+  const { items, palette, sway } = planInstances(count, opts, proto.hasTexture, level, streamName);
   if (opts.solid) registerSolids(protoSize, items, opts);
 
   // Bake each part's relative transform in, then take the union of the results:
@@ -466,11 +690,80 @@ function buildRow(proto, count, opts) {
   }
 }
 
-// Build the whole seabed from a PROPS table plus the loaded model map.
-export function scatterAll(propTable, models) {
+// Build one level's seabed from a PROPS table plus the loaded model map.
+//
+// `level` carries the basin centre every ring is measured from and, for rows
+// flagged `gap`, the bearing of the canyon mouth to leave clear. Called once per
+// level, so two levels with different tables (a bare plain and a dense reef) cost
+// nothing extra to express.
+//
+// ---- ROWS ARE NAMED, NOT NUMBERED ------------------------------------------
+// Each row gets a stable name — `L<level>:<model>#<nth row using that model>` —
+// and every instance in it seeds from that (planInstances). The name deliberately
+// avoids the row's INDEX in the table, so inserting a row at the top does not
+// renumber the ones below it and re-roll them; only adding another row of the
+// SAME model shifts that model's later rows. Set `stream: 'somename'` on a row to
+// pin its identity by hand and make even that immovable.
+//
+// The level id is in the name, which is what finally decouples the two levels:
+// the plain and the reef no longer share one sequence, so tuning level 1 cannot
+// reach level 2. That was the last place the "whoever draws first decides where
+// everyone else lands" hazard from placement.js still lived.
+export function scatterAll(propTable, models, level) {
+  const nth = new Map();
   for (const { model, count, ...opts } of propTable) {
-    buildRow(models[model], count, opts);
+    // Counted before the load check, so a model that failed to load doesn't
+    // renumber the rows that come after it.
+    const base = opts.stream || model;
+    const n = nth.get(base) ?? 0;
+    nth.set(base, n + 1);
+
+    const proto = models[model];
+    if (!proto) { console.warn(`prop model "${model}" not loaded`); continue; }
+    buildRow(proto, count, opts, level, `L${level.id}:${base}#${n}`);
   }
+}
+
+// ---- LIVE ERASE (F4 editor only) -------------------------------------------
+// Hide every scattered instance standing inside a circle, and take its collider
+// with it. Used to preview a `clear` zone before you commit it to config.js —
+// the permanent version is the drop in planInstances, which never builds them in
+// the first place.
+//
+// An InstancedMesh cannot lose a member, so an erased instance is scaled to zero
+// AND parked far below the world: zero scale alone leaves a degenerate triangle
+// at the mesh's origin, which is a real pixel in the middle of the reef.
+//
+// Positions are read back out of instanceMatrix rather than kept alongside it.
+// That is 16 floats of copying per instance in a tool that runs on a keypress,
+// against carrying a parallel position array for every prop in the world forever.
+const eraseMat = new THREE.Matrix4();
+const erasePos = new THREE.Vector3();
+
+export function clearArea(x, z, r) {
+  let removed = 0;
+  for (const c of chunks) {
+    // Whole-chunk reject first: most of the world is nowhere near the brush.
+    const cdx = x - c.center.x, cdz = z - c.center.z;
+    if (Math.hypot(cdx, cdz) > c.radius + r) continue;
+
+    const mesh = c.mesh;
+    let touched = false;
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, eraseMat);
+      erasePos.setFromMatrixPosition(eraseMat);
+      const dx = erasePos.x - x, dz = erasePos.z - z;
+      if (dx * dx + dz * dz > r * r) continue;
+      eraseMat.makeScale(0, 0, 0);
+      eraseMat.setPosition(0, -1e5, 0);
+      mesh.setMatrixAt(i, eraseMat);
+      touched = true;
+      removed++;
+    }
+    if (touched) mesh.instanceMatrix.needsUpdate = true;
+  }
+  removed += removeSolidsIn(x, z, r);
+  return removed;
 }
 
 // How many chunks exist / are drawn — surfaced on the F3 readout so the culling

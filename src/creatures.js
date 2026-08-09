@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { WORLD, CREATURES } from './config.js';
+import { WORLD, CREATURES } from './config/config.js';
+import { LEVELS } from './config/levels/index.js';
 import { scene } from './core.js';
 import { floorAt } from './terrain.js';
-import { ringRadius, clampRadius } from './placement.js';
+import { ringRadius, clampRadius, makeStream, live } from './placement.js';
+import { habitatY } from './levels.js';
 import { resolveBody } from './collision.js';
 import { tickMixer } from './mixers.js';
 import { registerPrey } from './prey.js';
@@ -24,18 +26,23 @@ import { registerPrey } from './prey.js';
 
 const creatures = [];
 
+// This subsystem's slice of the world seed (placement.js). Spawn draws from it, so
+// the same seed puts the same whale in the same place at the same size facing the
+// same way; the roaming afterwards draws from `live`, because where a dolphin is
+// two minutes in depends on where the player chased it.
+const rng = makeStream('creatures');
+
 // How far out a creature may roam: the whole basin, stopping just short of the
-// mountain range.
-//
-// Tied to WORLD.mountainRing rather than to WORLD.half, which is a change from
-// when the play area was smaller than the range. A fraction of WORLD.half now
-// works out past r=100, i.e. inside the peaks — and while the wildlife does have
-// rock collision, an animal that spends its life bouncing off mountain flanks and
-// re-routing looks broken rather than alive. Better to keep them in the open water
-// where they belong and let collision stay the backstop it's meant to be.
+// bound. Kept out of the peaks deliberately — the wildlife does have rock
+// collision, but an animal that spends its life bouncing off mountain flanks and
+// re-routing looks broken rather than alive, so collision stays the backstop it
+// is meant to be rather than the thing that steers.
 //
 // Enforced as a CIRCLE, not a box: see clampRadius() in placement.js for why.
-const ROAM_LIMIT = WORLD.mountainRing - 2;
+//
+// Taken from the REEF's own play bound rather than from a shared constant: the
+// wildlife lives in level 2 and its range has to grow when that level does.
+const ROAM_LIMIT = LEVELS[1].play - 10;
 
 // scratch — allocated once, reused every frame
 const tmp = new THREE.Vector3();
@@ -45,9 +52,19 @@ const away = new THREE.Vector3();
 // from it, so nothing materialises in front of the player.
 const lastShark = new THREE.Vector3();
 
-// Fraction of the water column -> world Y. 0 = mean seabed, 1 = surface.
+// Band fraction -> world Y. Read as HEIGHT ABOVE THE SEABED against levels.js
+// HABITAT, not as a fraction of the water column — see the long note there. When
+// level 2's floor dropped to -50 the column doubled, and a column-relative band
+// took the whales and dolphins with it: they ended up near the surface with the
+// whole reef abandoned beneath them. Seabed-relative holds them exactly where
+// they were tuned to be, at any depth.
+//
+// Every creature lives in LEVELS[1] — the reef, centred on the origin — so the
+// floor is sampled at z = 0. Wildlife is deliberately absent from the shallows:
+// a plain you can see across with a whale in it is not a plain, and "the big
+// animals live deeper" is the first thing the descent should teach.
 function columnY(frac) {
-  return WORLD.seabed + frac * (WORLD.surface - WORLD.seabed);
+  return habitatY(frac, 0);
 }
 
 // Shortest signed distance between two angles, so a creature crossing ±π turns
@@ -56,15 +73,18 @@ function angleDelta(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
-function newWaypoint(c) {
-  const a = Math.random() * Math.PI * 2;
+// `draw` is the stream to use: the seeded one for the waypoint an animal is BORN
+// on (that is its spawn position — part of the world), `live` for every waypoint it
+// picks afterwards.
+function newWaypoint(c, draw) {
+  const a = draw() * Math.PI * 2;
   const [inner, outer] = c.spec.ring;
   // min() so a `ring` widened in config can never place a waypoint outside the
   // circle the creature is actually allowed to reach — see ROAM_LIMIT.
-  const r = ringRadius(Math.min(inner, ROAM_LIMIT * 0.9), Math.min(outer, ROAM_LIMIT * 0.95));
+  const r = ringRadius(Math.min(inner, ROAM_LIMIT * 0.9), Math.min(outer, ROAM_LIMIT * 0.95), draw);
   const [lo, hi] = c.spec.band;
-  c.target.set(Math.cos(a) * r, columnY(lo + Math.random() * (hi - lo)), Math.sin(a) * r);
-  c.retarget = c.spec.dwell[0] + Math.random() * c.spec.dwell[1];
+  c.target.set(Math.cos(a) * r, columnY(lo + draw() * (hi - lo)), Math.sin(a) * r);
+  c.retarget = c.spec.dwell[0] + draw() * c.spec.dwell[1];
 }
 
 // SkinnedMesh.updateMatrixWorld() is what refreshes bindMatrixInverse — see the
@@ -100,7 +120,7 @@ function lightUpLure(proto, { material, color, intensity }) {
 }
 
 function spawn(proto, spec) {
-  const size = spec.sMin + Math.random() * (spec.sMax - spec.sMin);
+  const size = spec.sMin + rng() * (spec.sMax - spec.sMin);
   const dims = measureBody(proto);      // NOT `body` — that's the roll group below
 
   // rig: pivot (world position + heading + pitch) -> body (bank) -> model.
@@ -118,10 +138,10 @@ function spawn(proto, spec) {
   const c = {
     spec, pivot, body,
     target: new THREE.Vector3(),
-    yaw: Math.random() * Math.PI * 2,
+    yaw: rng() * Math.PI * 2,
     pitch: 0,
     roll: 0,
-    speed: spec.speed * (0.85 + Math.random() * 0.3),
+    speed: spec.speed * (0.85 + rng() * 0.3),
     // keep the belly off the sand and the dorsal fin under the surface
     clearance: dims.halfHeight * size + 0.6,
     // Rock collision: three spheres down the animal's length. A 21-unit whale
@@ -138,7 +158,7 @@ function spawn(proto, spec) {
     alive: true,
   };
 
-  newWaypoint(c);
+  newWaypoint(c, rng);      // where it starts IS world generation — seeded
   pivot.position.copy(c.target);
   pivot.rotation.y = c.yaw;
   c.fwd.set(0, 0, -1).applyQuaternion(pivot.quaternion);
@@ -151,9 +171,9 @@ function spawn(proto, spec) {
     c.mixer = new THREE.AnimationMixer(model);
     const action = c.mixer.clipAction(clip);
     action.setLoop(THREE.LoopRepeat, Infinity);
-    action.timeScale = spec.rate * (0.9 + Math.random() * 0.2);
+    action.timeScale = spec.rate * (0.9 + rng() * 0.2);
     action.play();
-    action.time = Math.random() * clip.duration;   // stagger, or they beat in lockstep
+    action.time = rng() * clip.duration;   // stagger, or they beat in lockstep
   } else {
     console.warn(`${spec.model}: no animation clips found`);
   }
@@ -182,18 +202,22 @@ function spawn(proto, spec) {
 // blinks into existence twenty units off your nose undoes the whole illusion, and
 // unlike a fish rejoining its school there is nothing to hide behind out here.
 function reseat(c) {
+  // `live`, not the seed: this fires when the player has eaten the animal and the
+  // respawn timer runs out, which is not something a seed describes. The retry
+  // count varies too, so a seeded stream here would be drawn from an unpredictable
+  // number of times — the exact hazard makeStream exists to contain.
   for (let i = 0; i < 8; i++) {
-    newWaypoint(c);
+    newWaypoint(c, live);
     if (c.target.distanceTo(lastShark) > 55) break;
   }
   c.pivot.position.copy(c.target);
-  c.yaw = Math.random() * Math.PI * 2;
+  c.yaw = live() * Math.PI * 2;
   c.pitch = 0;
   c.roll = 0;
   c.pivot.rotation.set(0, c.yaw, 0);
   c.body.rotation.z = 0;   // roll lives on the inner group, and it damps in slowly
   c.fwd.set(0, 0, -1).applyQuaternion(c.pivot.quaternion);
-  newWaypoint(c);         // ...and now somewhere to actually swim
+  newWaypoint(c, live);   // ...and now somewhere to actually swim
 }
 
 export function createCreatures(models) {
@@ -215,7 +239,7 @@ export function updateCreatures(dt, sharkPos) {
     const pos = pivot.position;
 
     c.retarget -= dt;
-    if (c.retarget <= 0) newWaypoint(c);
+    if (c.retarget <= 0) newWaypoint(c, live);
 
     // Shy species break off and put distance between themselves and the shark.
     // The whale (shy: 0) keeps its course — nothing down here worries it.

@@ -1,4 +1,4 @@
-import { PERF } from './config.js';
+import { PERF } from './config/config.js';
 import { camera } from './core.js';
 
 // ============================================================

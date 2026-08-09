@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BITE } from './config.js';
+import { BITE } from './config/config.js';
 import { sharkState } from './shark.js';
 import { consumeBite } from './input.js';
 import { tryBite, updatePrey } from './prey.js';

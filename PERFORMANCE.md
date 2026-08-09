@@ -14,7 +14,7 @@ feel. Numbers are per frame unless stated.
 ## 0. Measured baseline
 
 Extracted by parsing every `assets/*.glb` header and cross-referencing
-[config.js](src/config.js):
+[config.js](src/config/config.js):
 
 | Metric | Now | Reasonable target |
 |---|---|---|
@@ -203,7 +203,7 @@ the backdrop gradient 0x3f9fcc/0x03121e → **0x256d94/0x020a11**.
 
 ### 2.5 Particle sprite fill cost
 
-2,300 blended points ([config.js:339-343](src/config.js#L339-L343)). The count
+2,300 blended points ([config.js:339-343](src/config/config.js#L339-L343)). The count
 itself is cheap (3 draw calls, GPU-animated — that part is already well done).
 The cost is **fill**: a bubble at `size: 0.55` with attenuation, one metre from
 the camera, covers a large screen area, blended, with no depth write.
@@ -316,7 +316,7 @@ cells are dropped entirely.
 
 ### 3.4 Distance culling matched to the fog
 
-`FOG_DENSITY = 0.0135` ([config.js:26](src/config.js#L26)). `FogExp2` transmittance
+`FOG_DENSITY = 0.0135` ([config.js:26](src/config/config.js#L26)). `FogExp2` transmittance
 is `exp(-(d·density)²)`:
 
 | Distance | Visible contribution |
@@ -328,7 +328,7 @@ is `exp(-(d·density)²)`:
 
 Anything past ~130 units is contributing under 5% of its colour and is not worth
 a single triangle. Yet the canopy rows sit at **r=80..115**
-([config.js:178-180](src/config.js#L178-L180)) — 293 instances, 417k triangles,
+([config.js:178-180](src/config/config.js#L178-L180)) — 293 instances, 417k triangles,
 mostly invisible, *and* they are in the per-frame CPU sway rebuild.
 
 Options, cheapest first:
@@ -527,7 +527,7 @@ includes not stalling for 30 seconds on a slow connection.
 ### 5.1 `whale_sound.mp3` is 19.7 MB — 76% of your entire payload
 
 616 seconds (10:17) of 256 kbps stereo, used as a background ambience loop
-([config.js:358](src/config.js#L358)).
+([config.js:358](src/config/config.js#L358)).
 
 - Trim to a 30–45 s seamless loop.
 - Re-encode mono at 96 kbps (it is ambient, positioned nowhere).
@@ -634,12 +634,12 @@ and you may hit target before finishing.
 |---|---|---|---|
 | 0 | F3 perf readout (fps / ms / CPU ms / draw calls / tris / dpr; Phase 2 added visible-chunk count) — **§1** | [main.js](main.js), [hud.js](src/hud.js), [index.html](index.html), [style.css](style.css) | added |
 | 1 | Pixel ratio cap 2.0 → **1.5**, `antialias: false`, `stencil: false`, `powerPreference` — **§2.1** | [core.js](src/core.js#L11) | done |
-| 2 | `DoubleSide` → per-model `twoSided` flag, default `FrontSide` — **§3.2** | [config.js](src/config.js), [loader.js](src/loader.js#L58) | done |
+| 2 | `DoubleSide` → per-model `twoSided` flag, default `FrontSide` — **§3.2** | [config.js](src/config/config.js), [loader.js](src/loader.js#L58) | done |
 | 3 | Frustum culling re-enabled for all non-skinned meshes — **§3.1** | [loader.js](src/loader.js#L56) | done |
-| 4 | God rays 30 → **10**, `DoubleSide` → `FrontSide` — **§2.3** | [config.js](src/config.js), [godrays.js](src/godrays.js#L14) | done |
+| 4 | God rays 30 → **10**, `DoubleSide` → `FrontSide` — **§2.3** | [config.js](src/config/config.js), [godrays.js](src/godrays.js#L14) | done |
 | 5 | Water `DoubleSide` → `BackSide`, Standard → **Lambert** — **§2.4** | [water.js](src/water.js#L16) | done (size unchanged, see §2.4) |
 | 6 | Sand anisotropy 16 → **4** — **§2.6** | [terrain.js](src/terrain.js#L66) | done |
-| 7 | Bubbles 800 → **350**, snow 1350 → **700** — **§2.5** | [config.js](src/config.js) | done |
+| 7 | Bubbles 800 → **350**, snow 1350 → **700** — **§2.5** | [config.js](src/config/config.js) | done |
 | 8 | ~~`camera.far` 500 → 200, backdrop 320 → 180~~ — **§3.4** | — | **skipped — would clip the sky, see §3.4** |
 
 Measured effect of the above:
@@ -672,14 +672,14 @@ asset-pipeline work behind.
 | 10 | Uniform-grid spatial hash for collision — **§4.2** | [collision.js](src/collision.js) | done |
 | 11 | Distance + rate gating on AnimationMixers — **§4.3** | [mixers.js](src/mixers.js), [fish.js](src/fish.js), [creatures.js](src/creatures.js) | done |
 | 12 | Spatial chunking of the instanced props — **§3.3** (was Phase 3) | [props.js](src/props.js) | done |
-| 13 | Distance culling matched to the fog — **§3.4** (was Phase 3) | [props.js](src/props.js), [config.js](src/config.js) | done |
+| 13 | Distance culling matched to the fog — **§3.4** (was Phase 3) | [props.js](src/props.js), [config.js](src/config/config.js) | done |
 | 14 | God rays → one `InstancedMesh`, vertex billboard, distance fade — **§2.3** (was Phase 3) | [godrays.js](src/godrays.js) | done |
 | 15 | Prop materials Standard → Lambert — **§2.7** (was Phase 3) | [props.js](src/props.js) | done |
 | 16 | Water → single-sided ocean shader — **§2.4a** | [water.js](src/water.js) | done |
 | 17 | Orb + halo material sharing, sphere 16×16 → 12×8 — **§3.7** | [orbs.js](src/orbs.js) | done |
 | 18 | `renderer.compile()` warm-up before the start screen — **§6** | [world.js](src/world.js) | done |
 | 19 | Pause the loop + audio when the tab is hidden — **§4.7** | [main.js](main.js), [audio.js](src/audio.js) | done |
-| 19a | Hard 60 fps cap (`PERF.targetFps`) — **§4.7** | [main.js](main.js), [config.js](src/config.js) | done |
+| 19a | Hard 60 fps cap (`PERF.targetFps`) — **§4.7** | [main.js](main.js), [config.js](src/config/config.js) | done |
 | 20 | Pooled one-shot `Audio` elements — **§4.6** | [audio.js](src/audio.js) | done |
 | 21 | `matrixAutoUpdate = false` on all static scenery — **§4.4** | [terrain.js](src/terrain.js), [water.js](src/water.js), [core.js](src/core.js), [props.js](src/props.js) | done |
 | — | Decimate `kelp-tall` / `Seaweed-3` / `sea-anemone` — **§3.5** | — | **not done** — asset work, see below |
@@ -736,7 +736,7 @@ originally projected and the projections were the optimistic ones:
   **91°**, not 60 — that alone is a quarter of the world rather than a sixth — and
   a chunk sphere is admitted whenever it *touches* the frustum, so the boundary
   chunks all get drawn. The `chunkTriangles` budget was swept rather than guessed;
-  the curve and the chosen point are tabulated in [config.js](src/config.js).
+  the curve and the chosen point are tabulated in [config.js](src/config/config.js).
 
 #### Two Phase 2 items deliberately not done
 

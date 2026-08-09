@@ -1,6 +1,12 @@
 import * as THREE from 'three';
-import { WORLD, GOD_RAYS } from './config.js';
+import { WORLD, GOD_RAYS } from './config/config.js';
+import { LEVELS } from './config/levels/index.js';
 import { scene, uTime } from './core.js';
+import { makeStream } from './placement.js';
+
+// This module's slice of the world seed (placement.js). Where the shafts hang is
+// as much a part of a given seed's ocean as where the rocks are.
+const rng = makeStream('godrays');
 
 // ============================================================
 //  GOD RAYS  — additive shafts hanging off the surface
@@ -38,12 +44,15 @@ export function createGodRays() {
   const geo = new THREE.PlaneGeometry(1, 1);
 
   // per-instance: animation seed and the little lean off vertical
-  const n = GOD_RAYS.count;
+  // Per LEVEL, not per world — 10 shafts dealt across two basins would halve the
+  // density in each. Fill cost is unaffected: the distance fade means only the
+  // basin you are actually in ever rasterises anything.
+  const n = GOD_RAYS.count * LEVELS.length;
   const seed = new Float32Array(n);
   const lean = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    seed[i] = Math.random();
-    lean[i] = (Math.random() - 0.5) * 0.3;
+    seed[i] = rng();
+    lean[i] = (rng() - 0.5) * 0.3;
   }
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seed, 1));
   geo.setAttribute('aLean', new THREE.InstancedBufferAttribute(lean, 1));
@@ -106,14 +115,19 @@ export function createGodRays() {
   const rays = new THREE.InstancedMesh(geo, mat, n);
   const m = new THREE.Matrix4();
   for (let i = 0; i < n; i++) {
-    const h = 24 + Math.random() * 12;
+    const h = 24 + rng() * 12;
     // Translation + scale only. The vertex shader reads the origin and the axis
     // lengths straight out of these columns, so no rotation may live here.
-    m.makeScale(5 + Math.random() * 9, h, 1);
+    m.makeScale(5 + rng() * 9, h, 1);
+    // Spread across one basin at a time and dealt out round-robin, so every level
+    // gets its share of the same single InstancedMesh. One draw call for the whole
+    // world is the entire point of this module (see the header), so the shafts
+    // must not be split into a mesh per level.
+    const L = LEVELS[i % LEVELS.length];
     m.setPosition(
-      (Math.random() - 0.5) * WORLD.half * 1.7,
+      L.center[0] + (rng() - 0.5) * WORLD.half * 1.7,
       WORLD.surface - h / 2,
-      (Math.random() - 0.5) * WORLD.half * 1.7,
+      L.center[2] + (rng() - 0.5) * WORLD.half * 1.7,
     );
     rays.setMatrixAt(i, m);
   }

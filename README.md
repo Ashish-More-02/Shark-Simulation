@@ -67,7 +67,12 @@ shark-game/
 ├── style.css         # HUD + start screen
 ├── main.js           # entry point: boot + frame loop, nothing else
 ├── src/
-│   ├── config.js     # every tunable, no logic — start here
+│   ├── config/
+│   │   ├── config.js     # every tunable, no logic — start here
+│   │   └── levels/       # one file per basin
+│   │       ├── index.js  # the LEVELS array + the prop-row key legend
+│   │       ├── level-1.js# LEVEL_1 "The Shallows" + its PROPS_PLAIN table
+│   │       └── level-2.js# LEVEL_2 "The Reef" + its PROPS table
 │   ├── core.js       # renderer / scene / camera / shared clock / lights
 │   ├── levels.js     # the shape of the world: floor profile, play bound, extent
 │   ├── editor.js     # F4 in-game placement editor (Docs/systems/placement-editor.md)

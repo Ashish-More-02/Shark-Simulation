@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import { WORLD, PARTICLES } from './config.js';
+import { WORLD, PARTICLES } from './config/config.js';
 import { scene, uTime } from './core.js';
 import { softSprite } from './materials.js';
+import { worldBounds, DEEPEST } from './levels.js';
+import { makeStream, live } from './placement.js';
 
 // ============================================================
 //  PARTICLES  — bubbles rise, marine snow drifts down,
@@ -15,18 +17,36 @@ import { softSprite } from './materials.js';
 
 let wake = null;
 
+// This module's slice of the world seed (placement.js), for the standing bubble and
+// snow FIELD — laid out once at build and then animated entirely in the shader, so
+// it is scenery like anything else. The wake and the bite spray below are not: they
+// happen where the player swims and bites, and draw from `live`.
+const rng = makeStream('particles');
+
 // A GPU-animated Points field. `motion` is GLSL that rewrites `transformed`,
 // with `aSpeed` / `aPhase` available per particle.
+// The field is one box spanning every level — bubbles and snow are a single draw
+// call each no matter how big it is, and a per-level field would need the wrap
+// height to change as you crossed a boundary, which is a shader constant.
+//
+// FLOOR is the DEEPEST seabed in the world, so the column is tall enough for the
+// lowest level. In the shallows that means snow keeps falling for a while below
+// the sand, and bubbles are born under it — both invisible, both free, and both
+// far cheaper than making the wrap depth-dependent.
+const FLOOR = DEEPEST;
+const SPAN = WORLD.surface - FLOOR;
+
 function gpuField({ count, size, opacity }, tex, spread, motion) {
+  const b = worldBounds();
   const pos = new Float32Array(count * 3);
   const spd = new Float32Array(count);
   const phase = new Float32Array(count);
   for (let i = 0; i < count; i++) {
-    pos[i * 3]     = (Math.random() - 0.5) * spread;
-    pos[i * 3 + 1] = WORLD.seabed + Math.random() * (WORLD.surface - WORLD.seabed);
-    pos[i * 3 + 2] = (Math.random() - 0.5) * spread;
-    spd[i] = 0.4 + Math.random();
-    phase[i] = Math.random() * Math.PI * 2;
+    pos[i * 3]     = b.midX + (rng() - 0.5) * b.width * spread;
+    pos[i * 3 + 1] = FLOOR + rng() * SPAN;
+    pos[i * 3 + 2] = b.midZ + (rng() - 0.5) * b.depth * spread;
+    spd[i] = 0.4 + rng();
+    phase[i] = rng() * Math.PI * 2;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -46,9 +66,9 @@ function gpuField({ count, size, opacity }, tex, spread, motion) {
         uniform float uTime;
         attribute float aSpeed;
         attribute float aPhase;
-        const float uSeabed  = ${WORLD.seabed.toFixed(1)};
+        const float uSeabed  = ${FLOOR.toFixed(1)};
         const float uSurface = ${WORLD.surface.toFixed(1)};
-        const float uSpan    = ${(WORLD.surface - WORLD.seabed).toFixed(1)};`)
+        const float uSpan    = ${SPAN.toFixed(1)};`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\n${motion}`);
   };
   mat.customProgramCacheKey = () => 'gpuParticles:' + motion.length;
@@ -64,7 +84,7 @@ export function createParticles() {
   const bubbles = gpuField(
     PARTICLES.bubbles,
     softSprite('rgba(255,255,255,0.9)', 'rgba(200,235,255,0.5)'),
-    WORLD.half * 2,
+    1.0,
     `transformed.y = uSeabed + mod(position.y - uSeabed + uTime * (1.0 + aSpeed * 1.8), uSpan);`
   );
 
@@ -72,7 +92,7 @@ export function createParticles() {
   const snow = gpuField(
     PARTICLES.snow,
     softSprite('rgba(255,255,255,0.85)', 'rgba(225,240,255,0.45)'),
-    WORLD.half * 2.2,
+    1.1,
     `transformed.y = uSurface - mod(uSurface - position.y + uTime * aSpeed * 0.22, uSpan);
      transformed.x += sin(uTime * 0.3 + aPhase) * 0.8;`
   );
@@ -108,9 +128,9 @@ function spawnBubble(x, y, z) {
 // Drop one bubble just behind the shark's tail.
 export function emitWake(position, forward) {
   spawnBubble(
-    position.x - forward.x * 3 + (Math.random() - 0.5) * 0.8,
-    position.y - forward.y * 3 + (Math.random() - 0.5) * 0.8,
-    position.z - forward.z * 3 + (Math.random() - 0.5) * 0.8
+    position.x - forward.x * 3 + (live() - 0.5) * 0.8,
+    position.y - forward.y * 3 + (live() - 0.5) * 0.8,
+    position.z - forward.z * 3 + (live() - 0.5) * 0.8
   );
 }
 
@@ -120,9 +140,9 @@ export function emitWake(position, forward) {
 export function emitPuff(position, count, spread) {
   for (let i = 0; i < count; i++) {
     spawnBubble(
-      position.x + (Math.random() - 0.5) * spread,
-      position.y + (Math.random() - 0.5) * spread,
-      position.z + (Math.random() - 0.5) * spread
+      position.x + (live() - 0.5) * spread,
+      position.y + (live() - 0.5) * spread,
+      position.z + (live() - 0.5) * spread
     );
   }
 }

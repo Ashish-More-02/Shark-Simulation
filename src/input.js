@@ -1,4 +1,4 @@
-import { SHARK } from './config.js';
+import { SHARK } from './config/config.js';
 import { canvas } from './core.js';
 
 // ============================================================
