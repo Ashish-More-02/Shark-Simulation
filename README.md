@@ -4,6 +4,13 @@ A tiny 3D browser game built with **Three.js** (no build step). Swim through the
 deep ocean as a shark, hunt the reef, and collect glowing orbs — viewed from a
 top-back chase camera.
 
+You start on **the Shallows**, an open plain of sand ringed by peaks. A canyon in
+the mountain wall drops 35 metres into **the Reef** — the dense, deeper basin where
+the whales, dolphins and anglerfish live. Both are one continuous seabed with no
+seam between them; see [Docs/systems/world-levels.md](Docs/systems/world-levels.md)
+for how the chain of levels works and where it is going (ten of them, ending on the
+floor of the Challenger Deep).
+
 Everything you eat makes you bigger. A shoaling fish or an anglerfish goes down in
 one bite, a dolphin takes 3, a whale takes 10, and anything eaten comes back
 exactly 60 seconds later. Growth is deliberately imperceptible per meal — about
@@ -14,10 +21,17 @@ The `NEAREST` line on the HUD gives you a bearing and a distance to the closest
 whale, dolphin or anglerfish. You need it: there are 11 of them scattered across a
 basin you can only see ~50 units through.
 
-## future development 
+## Changing the world
 
-- bundle this into a electron app
-- add more features to this simulation.
+[Docs/systems/world-reference.md](Docs/systems/world-reference.md) is the manual:
+units and axes, the seed, the terrain function, every prop-row option, patches,
+hand-placement, collision, performance levers, and a recipe table for "I want to
+change X". Start there.
+
+## Direction
+
+The plan — story, exploration and systems bound together by depth — lives in
+[Docs/ROADMAP.md](Docs/ROADMAP.md). Per-system design docs go in `Docs/systems/`.
 
 ## Run it
 
@@ -55,6 +69,8 @@ shark-game/
 ├── src/
 │   ├── config.js     # every tunable, no logic — start here
 │   ├── core.js       # renderer / scene / camera / shared clock / lights
+│   ├── levels.js     # the shape of the world: floor profile, play bound, extent
+│   ├── editor.js     # F4 in-game placement editor (Docs/systems/placement-editor.md)
 │   ├── materials.js  # caustic shader injection, particle sprites
 │   ├── terrain.js    # sand textures, dunes, seabedHeight() + floorAt()
 │   ├── water.js      # surface plane + ripples

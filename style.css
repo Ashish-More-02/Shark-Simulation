@@ -175,6 +175,33 @@ html, body {
 #stamina.spent { --fill: #ff7a5c; }
 
 /* ---- Perf readout (F3) ---- */
+/* ---- Placement editor (F4) ----
+   Bottom-RIGHT, so it never fights the perf readout: you want both up at once
+   while placing, because a hand-placed mountain is the easiest way there is to
+   put a hundred thousand triangles somewhere you will never look. */
+#editor {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  max-width: 42ch;
+  padding: 10px 14px;
+  background: rgba(4, 22, 38, 0.72);
+  border: 1px solid rgba(70, 224, 138, 0.35);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.75;
+  color: #cfe9dc;
+  white-space: pre-wrap;
+  user-select: none;
+  pointer-events: none;
+  z-index: 5;
+}
+#editor b   { color: #46e08a; letter-spacing: 1.5px; }
+#editor b.warn { color: #ff7a5c; }
+#editor .dim { color: #6f93a6; }
+#editor .ok  { color: #46e08a; }
+
 #perf {
   position: fixed;
   bottom: 18px;

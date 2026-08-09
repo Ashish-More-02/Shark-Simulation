@@ -4,6 +4,7 @@
 //
 //    config.js     every tunable, no logic
 //    core.js       renderer / scene / camera / shared clock
+//    levels.js     the shape of the world: floor profile, play bound, extent
 //    materials.js  caustic shader injection, particle sprites
 //    terrain.js    sand, dunes, the seabedHeight() source of truth
 //    water.js      surface plane + ripples

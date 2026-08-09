@@ -1,9 +1,14 @@
 # System: world levels, streaming & the chart
 
-> First of the per-system design docs. Status: **design, not built.**
-> Owner doc for everything about how the world is divided, how it loads, and how
-> the player navigates it. See [ROADMAP.md](../ROADMAP.md) §2 for how this fits the
-> game as a whole.
+> First of the per-system design docs. Owner doc for everything about how the
+> world is divided, how it loads, and how the player navigates it. See
+> [ROADMAP.md](../ROADMAP.md) §2 for how this fits the game as a whole.
+>
+> **Status: levels 1–2 built. Everything else is design.**
+> Built — the level registry (`config.js` `LEVELS`), the continuous floor and the
+> play bound (`src/levels.js`), the canyon, per-level scatter/shoals/orbs, the
+> shark spawning in the shallows. Not built — streaming, levels 3–10, the chart,
+> dispositions. §10 records exactly what shipped and what it cost.
 
 ---
 
@@ -408,7 +413,179 @@ frame, and it never touches the 3D scene.
 
 ---
 
-## 9. Documentation convention
+## 9. What is actually built (levels 1–2)
+
+The first two levels ship as a **chain of basins**: the existing reef, unmoved, with
+a new and much emptier plain up-Z from it and a canyon joining the two. Ten levels
+of this shape are a string of basins linked by canyons, which is both real
+bathymetry and a better fit for the radial placement this game already had than a
+straight rectangular corridor would be.
+
+### The numbers, as built
+
+| | Value | Why |
+|---|---|---|
+| Level 1 "The Shallows" | centre (0, 0, **280**), floor **−15** | 33 m deep — inside the real 0–50 m band |
+| Level 2 "The Reef" | centre (0, 0, **0**), floor **−50** | 68 m deep — the shallow end of the real 50–200 m band |
+| Play bound | disc of r=**95** per basin | Not a box: a box of half-width 95 has corners at r=134, out past the peaks |
+| Canyon | z ∈ [88, 197], x ∈ ±26 | The only route between the two |
+| Ramp | z 190 → 95, −15 → −50 | 35 m of drop over 95 m of run, ~20° |
+| Seabed mesh | 450 × 730, 41k tris | Was 400 × 400, 24k |
+
+Levels descend in **−Z** because the shark's forward vector is (0, 0, −1): a player
+who spawns in level 1 and holds W swims toward level 2. Level 3 goes at z = −280.
+
+### The three things that make it read as one ocean
+
+1. **One continuous floor.** `seabedHeight(x, z)` is `seabedBase(z) + dunes(x, z) *
+   duneScale(z)`, and both `seabedBase` and `duneScale` are functions of z alone
+   running through the same smoothstep. There is nothing to stitch, so there is no
+   seam — the canyon floor is just where the sand happens to fall away.
+2. **The plain really is a plain.** `duneScale` damps level 1's dunes to 0.35, and
+   `PROPS_PLAIN` gives it about a fifth of the reef's props — no canopy, no
+   mid-storey, no bones. That contrast is what makes level 2 land as a reef, and
+   it is most of why two resident levels cost so little.
+3. **A gap in the wall.** The mountain-ring prop row takes a `gap` half-angle,
+   aimed at `LEVELS[n].gapDir`, so the peaks part at the canyon mouth instead of
+   walling off the one way through.
+
+### What had to change to allow a second basin
+
+The world was radial and origin-anchored in more places than it looked. Everything
+below now takes a centre or a bound:
+
+- `clampRadius` gained a centre (defaulting to the origin, so level 2's callers
+  read exactly as before); `planInstances`, `spawnPoint`, the shoal edge-turn and
+  the orb scatter all measure from their level's centre.
+- The shark's box clamp became `clampToWorld` — the union of both discs and the
+  corridor. A box around two basins would have let you swim between them across
+  open sand and never use the canyon.
+- `columnY` became depth-aware, so a band stays a *fraction* of the water column.
+  Level 2's column is twice level 1's, and not one species row needed an override.
+- The backdrop sphere was radius 320 **at the origin**, and level 1's rim is at
+  z=375 — you would have swum straight through it into the clear colour. It now
+  centres on the play area and sizes itself from it.
+- The seabed, the water surface, the particle field and the god rays all size or
+  place themselves off `worldBounds()` / `LEVELS` rather than off constants.
+
+### Bands are measured off the SEABED, not the water column
+
+The first cut of the levels got this wrong and it is the most instructive mistake
+in the system, so it is written down rather than quietly fixed.
+
+Every `band` row — bait shoals, the named species, the whales, dolphins and
+anglerfish — was a fraction of the water column. That was indistinguishable from
+correct while every level had the same 33-unit column. The moment level 2's floor
+dropped to −50 its column became 68, and **every animal in the game doubled its
+height off the sand**: shoals cruising above the kelp instead of through it, whales
+and dolphins up near the surface, anglerfish hovering over the reef they are meant
+to be sitting in. The reef stopped reading as a reef.
+
+Animals live at a height above the **floor**. So a band is now read against a fixed
+reference span — `HABITAT`, 33 units, the column the game was originally tuned in —
+which means every existing band row keeps precisely the height it was authored for,
+at any depth, in every level that will ever be added.
+
+| Band | Height above the floor |
+|---|---|
+| Bait shoals `FISH.band` | 5.9 – 27.1 |
+| Blue fish | 2.0 – 9.2 |
+| Clownfish | 0.7 – 5.9 |
+| Whale | 13.9 – 25.7 |
+| Dolphin | 16.5 – 31.3 |
+| Anglerfish | 0.7 – 7.3 |
+
+**The upper storey.** Holding animals to the habitat band leaves a deeper level's
+extra water empty — 35 units of it above level 2. `FISH.highSchools` fills it with
+bait shoals spawned between the top of the habitat band and just under the surface,
+so the reef has two hunting heights and looking up from among the plants shows
+shoals crossing overhead. Gated on `headroom() > highMinRoom`, so level 1 — whose
+column *is* the reference span — gets none and stays a plain with its fish on the
+sand.
+
+### Landmarks are hand-placed
+
+A prop row can carry a `fixed` array of level-local placements alongside (or
+instead of) its scattered `count`. A world assembled only from statistics has no
+landmarks in it, and a landmark is the one thing a scatter cannot produce — you
+cannot ask a random ring for "two peaks flanking the canyon mouth".
+
+The first use is **the gate**: four peaks framing the level 2 end of the canyon,
+two a side, staggered in z so each side reads as a headland rather than a cone.
+Their centres sit at r=112 and r=119, outside the play disc, so you can never get
+inside one, while their feet reach into reachable water at the mouth — you squeeze
+between them. The nearest collider edge is at x≈38, comfortably clear of the
+canyon's ±26. The tallest is scale 1.42, which tops out ~3 units under the surface:
+as large as a mountain can be on a floor at −50 without breaching.
+
+The mountain ring's `gap` for level 2 was widened to 0.75 rad specifically to clear
+random peaks out of the whole mouth, so these four define it on their own.
+
+### Two rules taken from the real seabed
+
+Both of these were got wrong first, and both are worth stating as rules because
+they will keep applying as levels are added.
+
+**1. Relief cannot exceed the water column.** A 33 m basin cannot hold a 60 m
+mountain — it stands out of the sea. The first cut gave the shallows the reef's
+mountain scales and every peak on its rim breached the surface by 27 units. So the
+column is what sizes the scenery, not the other way round, and both levels were
+deepened to buy room for it: **42 m in the shallows, 82 m on the reef**, still
+inside their real bands (0–50 m and 50–200 m), leaving 40 units of drop through
+the canyon. Any new mountain row has to satisfy
+`targetSize × sMax − sink × sMax < column`.
+
+Peaks are also **upright** (`tilt: 0`) and **sunk** (`sink: 3` per unit of scale).
+A tilted peak reads as one falling over, and on the canyon's slope it read as one
+already halfway down; real rock rises vertically whatever the ground beneath it is
+doing. Sinking hides the gap a flat-bottomed model leaves on sloped sand, and is
+what rock genuinely does — it comes up *through* sediment rather than sitting on it.
+
+**2. The seabed is a mosaic, not a sprinkle.** This is the answer to "the world
+feels like a large empty area", and nothing about it required more props.
+
+Real seabeds are patchy: a seagrass meadow, then bare rippled sand, then a rocky
+outcrop crusted with growth, then sand again. Equal-area sampling (`placement.js`)
+fixed the opposite artefact — everything bunched at the origin — but what it
+produces is *perfectly uniform* density, and uniform density at any density reads
+as empty, because there is nowhere full to be and so nowhere looks like somewhere.
+
+A prop row can now name a `clump`, and rows sharing a key share their patch
+centres. Two substrates, because the sea has two:
+
+| Patch set | Substrate | Rows |
+|---|---|---|
+| `REEF_PATCH` / `PLAIN_ROCK` | hard ground | outcrops, rubble, and everything that needs to hold onto something — kelp, ferns, anemones |
+| `MEADOW` / `PLAIN_MEADOW` | soft ground | seagrass, which roots in open sand and does not want the rock |
+
+That shared key is the substrate rule made mechanical: **kelp does not grow out of
+open sand**, so the kelp rows draw from the rock rows' seeds and the forests end up
+growing on the outcrops. One string does more for how natural the reef looks than
+any amount of extra geometry. `frac` is held below 1 so a quarter of each row still
+scatters and a patch frays into the sand instead of ending at a circle.
+
+**3. A canyon has walls.** Two peaks at the entrance is a gap in a fence. The
+corridor now has a line of mountains down each side, scales shrinking as the ramp
+rises because the water above them gets shallower, with kelp stands on the
+shoulders. Both mouths are dressed — the canyon has two ends and you arrive at
+each of them.
+
+### Known costs and soft spots
+
+- **The seabed is one 41k-triangle mesh with a world-spanning bounding sphere**, so
+  it is submitted every frame. Fine at two levels; it is the first thing that has
+  to be split per level when streaming lands (§5).
+- **Both levels are resident at all times.** Affordable now because level 1 is
+  nearly empty, and prop chunk distance-culling already hides the far basin. It
+  does not extend past three or four levels.
+- **Level 1 has no creatures** — the whales, dolphins and anglerfish are level 2
+  only. That is deliberate ("the big animals live deeper" is the first thing the
+  descent should teach) but it means `nearestTracked` points at a whale 280 m away
+  through a mountain while you are in the shallows.
+
+---
+
+## 10. Documentation convention
 
 Every system gets a doc in `Docs/systems/`, written when the system is designed
 rather than after it is built. Each one states: what the system is for, the numbers
@@ -416,7 +593,14 @@ it runs on and where they came from, what it costs, and what is still undecided.
 
 Docs written so far:
 
-- `world-levels.md` — this one.
+- `world-levels.md` — this one. The *why*: the shape of the world and the design
+  rules behind it.
+- [`world-reference.md`](world-reference.md) — the *how*: every knob that controls
+  the world, terrain and prop placement, what it does and what it breaks. Start
+  here when you want to change something.
+- [`placement-editor.md`](placement-editor.md) — the in-game F4 editor for
+  hand-placing landmarks and clearing ground, and how its output gets into
+  `config.js`.
 
 Planned, as each is designed: `echolocation.md`, `dispositions.md`, `progression.md`,
 `death-and-respawn.md`, `codex.md`, `story-spine.md`.
