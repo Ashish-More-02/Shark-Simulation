@@ -321,3 +321,196 @@ kbd {
   font-size: 12px;
   letter-spacing: 1px;
 }
+
+/* ---- MENU (E) ----
+   The game's second screen: shell here, page contents built by src/menu/.
+   Sized at ~72% of the viewport — big enough to be a place you go, small enough
+   that the ocean is still visible around it and the pause reads as temporary. */
+#menu {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 12, 22, 0.5);
+  /* "a little blur": enough to push the reef back and stop it competing with the
+     text, not so much that you lose where you are. */
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  user-select: none;
+}
+
+.menu-panel {
+  position: relative;      /* the close button hangs off this corner */
+  width: 72vw;
+  height: 76vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px 22px;
+  background: rgba(4, 22, 38, 0.72);
+  border: 1px solid rgba(120, 200, 255, 0.28);
+  border-radius: 18px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+}
+
+.menu-title {
+  text-align: center;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: #cfe9fb;
+}
+
+/* Sits in the title row's own space rather than pushing it around — the title is
+   centred on the PANEL, and a close button in the flow would shift it off centre. */
+.menu-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(120, 200, 255, 0.08);
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  border-radius: 9px;
+  color: #7fa8c4;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.menu-close:hover { background: rgba(255, 122, 92, 0.18); color: #ffb3a1; }
+
+/* Tab strip: one row, dividers between, active tab lit from below. */
+.menu-tabs {
+  display: flex;
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.menu-tab {
+  flex: 1;
+  padding: 11px 8px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid rgba(120, 200, 255, 0.16);
+  color: #7fa8c4;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.menu-tab:last-child { border-right: none; }
+.menu-tab:hover { background: rgba(120, 200, 255, 0.08); color: #cfe9fb; }
+.menu-tab.on {
+  background: rgba(120, 200, 255, 0.14);
+  color: #eaf6ff;
+  box-shadow: inset 0 -2px 0 #7fe0ff;
+}
+
+.menu-body { flex: 1; min-height: 0; }
+
+/* A page fills the body and lays itself out — this is deliberately only a box.
+   The two-column split belongs to the shark page, not to the shell. */
+.menu-page {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.menu-page[data-page="map"],
+.menu-page[data-page="missions"],
+.menu-page[data-page="quests"] { grid-template-columns: minmax(0, 1fr); }
+
+.menu-card {
+  position: relative;
+  min-height: 0;
+  padding: 18px 20px;
+  background: rgba(6, 30, 50, 0.5);
+  border: 1px solid rgba(120, 200, 255, 0.2);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.menu-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: #6fb7e6;
+  margin-bottom: 18px;
+}
+.menu-card-hint {
+  position: absolute;
+  bottom: 12px;
+  width: calc(100% - 40px);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #4d7f9e;
+  pointer-events: none;
+}
+
+/* The 3D viewport. padding: 0 so the canvas can fill the card edge to edge, and
+   the canvas is sized by CSS with preview.js chasing it (see fit() there). */
+.menu-viewport { padding: 0; }
+.preview-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.preview-canvas:active { cursor: grabbing; }
+
+/* ---- Stats ---- */
+.stat-list { display: flex; flex-direction: column; gap: 20px; }
+.stat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+.stat-name { font-size: 14px; color: #eaf6ff; letter-spacing: 0.5px; }
+/* "4.3 / 6.0 s of boost" — the current value carries the weight, the capacity
+   after it is quieter. Both are on screen because the bar means nothing without
+   the number it is a fraction OF. */
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #8fd3ff;
+  font-variant-numeric: tabular-nums;
+}
+.stat-max { font-size: 12px; font-weight: 500; color: #5f92b3; letter-spacing: 0.5px; }
+.stat-bar {
+  height: 7px;
+  background: rgba(120, 200, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.stat-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34a9e0, #7fe0ff);
+  transition: width 0.25s ease;
+}
+.stat-note {
+  margin-top: 6px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #4d7f9e;
+}
+/* Placeholders are dimmed and captioned, on purpose — a dummy stat that looks
+   live is a bug you find three months later. */
+.stat.dummy .stat-value { color: #6f93a6; }
+.stat.dummy .stat-max { color: #4d7f9e; }
+.stat.dummy .stat-bar i { background: rgba(120, 200, 255, 0.3); }
+/* Fully upgraded: there is no empty bar left to earn, so say so in gold rather
+   than leaving it looking like any other nearly-full row. */
+.stat.maxed .stat-value { color: #ffd479; }
+.stat.maxed .stat-bar i { background: linear-gradient(90deg, #d99b2a, #ffd479); }
+
+.menu-empty { display: flex; flex-direction: column; gap: 10px; }
+.menu-empty p { font-size: 14px; color: #a9cde5; line-height: 1.6; }
+.menu-empty .dim { color: #4d7f9e; font-size: 12px; letter-spacing: 1px; }

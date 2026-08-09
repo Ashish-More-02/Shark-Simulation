@@ -27,6 +27,10 @@
     <div class="hud-row"><span class="label">NEAREST</span><span id="track">—</span></div>
   </div>
 
+  <!-- In-game menu — toggled with E. Everything inside is built by
+       src/menu/menu.js; the pages live in src/menu/pages/. -->
+  <div id="menu" class="hidden"></div>
+
   <!-- Perf readout — toggled with F3 (or `). Hidden by default. -->
   <div id="perf" class="hidden"></div>
 
@@ -41,7 +45,7 @@
        is held; the fill fraction is the --p custom property, written from hud.js. -->
   <div id="stamina" class="hidden"></div>
 
-  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Q/E</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>Esc</b> free cursor</div>
+  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> free cursor</div>
 
   <button id="mute" aria-label="Mute audio">🔊</button>
 
@@ -54,8 +58,9 @@
       <div id="controls" class="hidden">
         <div class="ctrls">
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> swim &amp; turn</div>
-          <div><kbd>Q</kbd> rise &nbsp; <kbd>E</kbd> dive</div>
+          <div><kbd>Space</kbd> rise &nbsp; <kbd>Ctrl</kbd> dive</div>
           <div><kbd>Shift</kbd> boost &nbsp; <kbd>Left click</kbd> bite</div>
+          <div><kbd>E</kbd> menu — your shark, in 3D, and its stats</div>
           <div>Boost burns the green ring beside you — empty it and you swim at cruise until it refills</div>
           <div>Move the <b>mouse</b> to look · collect the glowing orbs</div>
           <div>Hunt to grow: fish go down in one bite, a dolphin takes 3, a whale 10</div>

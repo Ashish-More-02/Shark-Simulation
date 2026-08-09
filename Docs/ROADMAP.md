@@ -399,6 +399,7 @@ numbers it runs on and where they came from, what it costs, and what is still
 undecided. This roadmap stays a summary and links out.
 
 - [systems/world-levels.md](systems/world-levels.md) — levels, streaming, the chart
+- [systems/menu.md](systems/menu.md) — the E menu: shell, pages, 3D preview, stats
 - Planned: `echolocation.md`, `dispositions.md`, `progression.md`,
   `death-and-respawn.md`, `codex.md`, `story-spine.md`
 

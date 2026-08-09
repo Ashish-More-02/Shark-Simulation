@@ -3,6 +3,8 @@
 //  Elements are looked up once here rather than every frame.
 // ============================================================
 
+import { MPH } from './config/config.js';
+
 const el = {
   depth:    document.getElementById('depth'),
   speed:    document.getElementById('speed'),
@@ -42,8 +44,6 @@ export function setDepth(metres) {
 // cruise at accel/drag = 12.2 m/s = 27 mph, and boostSpeed clamps sprint at
 // 15.2 m/s = 34 mph. Whole mph is both what a speedo shows and coarse enough
 // (0.45 m/s a step) that a steady cruise stops rewriting the node every frame.
-const MPH = 2.23694;
-
 export function setSpeed(speed) {
   const s = Math.round(speed * MPH);
   if (s === lastSpeed) return;
@@ -217,6 +217,7 @@ export function wireStartScreen(onDive) {
 // toggleMute returns the new muted state; we just reflect it in the icon.
 export function wireMuteButton(toggleMute) {
   el.mute.addEventListener('click', () => {
+    el.mute.blur();          // ...or Space (rise) lands on the focused button
     el.mute.textContent = toggleMute() ? '🔇' : '🔊';
   });
 }

@@ -17,7 +17,8 @@
 //    audio.js      ambience loops, speed-reactive swim sound, SFX
 //    shark.js      rig, handling, swim clip, chase camera
 //    input.js      keyboard / mouse-look
-//    hud.js        the only module that touches the DOM
+//    hud.js        the HUD — the only module that touches the HUD's DOM
+//    menu/         the E menu: shell, 3D preview, stats, pages
 //    world.js      composition root: builds the scene, drives updates
 // ============================================================
 import { PERF } from './src/config/config.js';
@@ -28,6 +29,7 @@ import { showControls, showLoadError, wireStartScreen, wireMuteButton,
          wirePerfToggle, isPerfVisible, setPerf } from './src/hud.js';
 import { capturePointer } from './src/input.js';
 import { startAmbience, toggleMute, setAudioSuspended } from './src/audio.js';
+import { isMenuOpen, armMenu } from './src/menu/menu.js';
 
 let last = performance.now();
 
@@ -103,8 +105,11 @@ function tick(now) {
   last = now;
   uTime.value = now * 0.001;
 
+  // The menu FREEZES the simulation but not the drawing. Its overlay blurs what
+  // is behind it with a backdrop-filter, and what is behind it is this canvas —
+  // stop rendering and you are blurring a buffer nobody is maintaining.
   const cpuStart = performance.now();
-  updateWorld(dt, uTime.value);
+  if (!isMenuOpen()) updateWorld(dt, uTime.value);
   cpuMs += performance.now() - cpuStart;
 
   renderer.render(scene, camera);
@@ -132,6 +137,7 @@ document.addEventListener('visibilitychange', () => {
   else startLoop();
 });
 
-wireStartScreen(() => { capturePointer(); startAmbience(); });
+// armMenu(): E does nothing while the player is still looking at "Dive In".
+wireStartScreen(() => { capturePointer(); startAmbience(); armMenu(); });
 wireMuteButton(toggleMute);
 wirePerfToggle();

@@ -50,9 +50,10 @@ python3 -m http.server 8000   # then open http://localhost:8000
 |-----|--------|
 | `W` / `S` | Swim forward / brake |
 | `A` / `D` | Turn left / right |
-| `Q` / `E` | Rise / dive |
+| `Space` / `Ctrl` | Rise / dive (`Q` / `Z` also work) |
 | `Shift` | Boost |
 | Left click | Bite |
+| `E` | Menu — your shark in 3D, and its stats ([Docs/systems/menu.md](Docs/systems/menu.md)) |
 | Mouse | Look around (click canvas to capture; `Esc` releases) |
 
 The first click captures the pointer; after that left click bites. The reticle
@@ -92,7 +93,12 @@ shark-game/
 │   ├── bite.js       # the attack: cooldown, lunge, hit resolution, feedback
 │   ├── shark.js      # rig, handling, swim clip, growth, chase camera
 │   ├── input.js      # keyboard + mouse-look + the bite click, as axes
-│   ├── hud.js        # the only module that touches the DOM
+│   ├── hud.js        # the HUD — the only module that touches the HUD's DOM
+│   ├── menu/         # the E menu (Docs/systems/menu.md)
+│   │   ├── menu.js   # shell: overlay, tab strip, E key, pause/input handoff
+│   │   ├── preview.js# the rotatable 3D model viewport (its own renderer)
+│   │   ├── stats.js  # what a stat is: label, value, bar fraction, source
+│   │   └── pages/    # one file per tab — array order in index.js is tab order
 │   └── world.js      # composition root: builds scene, drives updates
 └── assets/           # .glb models
 ```

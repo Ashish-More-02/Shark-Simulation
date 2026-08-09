@@ -349,6 +349,36 @@ export const FISH = {
 
 export const ORBS = { count: 12, collectRadius: 2.2 };
 
+// One world unit is one metre, so every speed in this file is m/s. This is the
+// only place that conversion is written down — the HUD and the menu both read it.
+export const MPH = 2.23694;
+
+// ---- PLAYER PROGRESSION (the E menu) ---------------------------------------
+// What the shark IS, not what it is doing. Every row of the stat sheet reads
+// "what this shark can do now / what it could do fully upgraded", so the empty
+// part of each bar is the upgrade path — the growth that is still on the table.
+// Moment-to-moment values (how fast you are going right now, how much boost is
+// left in the tank) are the HUD's job and are deliberately not here.
+//
+// The `now` half of stamina and speed is NOT in this block: those are read off
+// STAMINA.boostSeconds and SHARK.boostSpeed, the numbers the game actually runs
+// on, so retuning handling moves the stat sheet with it and the two can never
+// disagree. Everything else here, and every `Cap`, is a placeholder for the
+// upgrade system that will own them.
+export const PLAYER = {
+  health: 100,
+  healthCap: 500, // hp
+  attack: 24,
+  attackCap: 100, // damage per bite, once bites do damage
+  // Pressure the shark can take, in atmospheres. The deepest floor in the world
+  // is ~9.2 atm, so a starting 14 means every level is currently survivable with
+  // room to spare — which is what you want while there is nothing to survive.
+  pressure: 14,
+  pressureCap: 60,
+  staminaCap: 20, // seconds of boost fully upgraded (now: STAMINA.boostSeconds)
+  speedCap: 60, // mph fully upgraded (now: SHARK.boostSpeed, 34 mph)
+};
+
 // In-game placement editor (F4). The brush cycles `models`, ordered big-to-small
 // so the things worth hand-placing come first.
 export const EDITOR = {
