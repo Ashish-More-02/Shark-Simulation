@@ -12,15 +12,56 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* ---- SCROLLABLE SURFACES ---------------------------------------------------
+   Two panels in this game grow with their CONTENT rather than with the window —
+   the start screen's control list and the menu's cards — and both used to be
+   sized as a fraction of the viewport and clipped at the edge. On a 1366x768
+   laptop that is not a cosmetic problem: the thing that falls off the bottom is
+   the "Dive In" button, or the last stat and its + button. So every panel that
+   can run out of room scrolls, and the scrollbars are themed to the water so a
+   scroll region does not read as a browser artefact dropped into the game.
+
+   overscroll-behavior: contain matters here too — without it a flick past the
+   end of the stat list scroll-chains into the page behind. */
+#start, .ctrls, .menu-body, .menu-card {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 200, 255, 0.32) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+#start::-webkit-scrollbar, .ctrls::-webkit-scrollbar,
+.menu-body::-webkit-scrollbar, .menu-card::-webkit-scrollbar { width: 9px; height: 9px; }
+#start::-webkit-scrollbar-track, .ctrls::-webkit-scrollbar-track,
+.menu-body::-webkit-scrollbar-track, .menu-card::-webkit-scrollbar-track { background: transparent; }
+#start::-webkit-scrollbar-thumb, .ctrls::-webkit-scrollbar-thumb,
+.menu-body::-webkit-scrollbar-thumb, .menu-card::-webkit-scrollbar-thumb {
+  /* border + background-clip is the only way to inset a webkit thumb: it keeps a
+     2px gutter either side so the thumb reads as a pill, not a filled channel. */
+  background: rgba(120, 200, 255, 0.3);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+#start::-webkit-scrollbar-thumb:hover, .ctrls::-webkit-scrollbar-thumb:hover,
+.menu-body::-webkit-scrollbar-thumb:hover, .menu-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 200, 255, 0.5);
+  background-clip: padding-box;
+}
+
 /* ---- HUD ---- */
+/* Eight rows is a tall block on a short window, and it is parked in the corner the
+   shark swims toward. The clamps shrink the inset, the padding and the type
+   together as the window gets short, so the readout keeps the same proportions
+   instead of eating a third of a 650px-tall viewport. */
 #hud {
   position: fixed;
-  top: 18px;
-  left: 18px;
+  top: clamp(10px, 1.6vh, 18px);
+  left: clamp(10px, 1.6vw, 18px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 18px;
+  gap: clamp(3px, 0.7vh, 6px);
+  padding: clamp(9px, 1.4vh, 14px) clamp(12px, 1.5vw, 18px);
+  max-width: 46vw;
   background: rgba(4, 22, 38, 0.45);
   border: 1px solid rgba(120, 200, 255, 0.25);
   border-radius: 12px;
@@ -29,8 +70,8 @@ html, body {
   letter-spacing: 0.5px;
   user-select: none;
 }
-.hud-row { display: flex; justify-content: space-between; gap: 22px; font-size: 15px; }
-.hud-row .label { color: #6fb7e6; font-size: 11px; font-weight: 700; letter-spacing: 2px; align-self: center; }
+.hud-row { display: flex; justify-content: space-between; gap: clamp(12px, 1.6vw, 22px); font-size: clamp(12px, calc(0.8vh + 7px), 15px); }
+.hud-row .label { color: #6fb7e6; font-size: clamp(9px, calc(0.5vh + 6px), 11px); font-weight: 700; letter-spacing: clamp(1px, 0.2vw, 2px); align-self: center; }
 /* The NEAREST row, when the animal it is pointing at is currently hostile. */
 #track.hostile { color: #ff8a7a; font-weight: 700; }
 
@@ -303,6 +344,9 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  /* Centred text over open water: it needs a width to wrap inside, or a long line
+     runs past both edges of a narrow window. */
+  max-width: min(560px, 88vw);
   text-align: center;
   opacity: 0;
   transition: opacity 0.5s ease;
@@ -312,8 +356,8 @@ html, body {
 }
 #death.show { opacity: 1; }
 #death b {
-  font-size: 34px;
-  letter-spacing: 4px;
+  font-size: clamp(22px, calc(2.6vh + 1.4vw), 34px);
+  letter-spacing: clamp(2px, 0.4vw, 4px);
   text-transform: uppercase;
   color: #ff8a7a;
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.9);
@@ -373,11 +417,11 @@ html, body {
 /* ---- Mute toggle ---- */
 #mute {
   position: fixed;
-  top: 18px;
-  right: 18px;
-  width: 44px;
-  height: 44px;
-  font-size: 18px;
+  top: clamp(10px, 1.6vh, 18px);
+  right: clamp(10px, 1.6vw, 18px);
+  width: clamp(36px, 4.6vh, 44px);
+  height: clamp(36px, 4.6vh, 44px);
+  font-size: clamp(15px, 2vh, 18px);
   line-height: 1;
   background: rgba(4, 22, 38, 0.45);
   border: 1px solid rgba(120, 200, 255, 0.25);
@@ -389,29 +433,59 @@ html, body {
 }
 #mute:hover { background: rgba(4, 22, 38, 0.65); }
 
+/* The controls reminder. It is one long line, so it can be wider than a small
+   laptop: max-width keeps it inside the window and lets it wrap onto a second
+   line rather than running off both edges. The pill shape survives the wrap
+   because the radius is larger than the box either way. */
 #hint {
   position: fixed;
-  bottom: 18px;
+  bottom: clamp(10px, 1.8vh, 18px);
   left: 50%;
   transform: translateX(-50%);
-  padding: 8px 16px;
+  max-width: calc(100vw - 24px);
+  padding: clamp(6px, 1vh, 8px) clamp(12px, 1.4vw, 16px);
   background: rgba(4, 22, 38, 0.5);
   border: 1px solid rgba(120, 200, 255, 0.2);
   border-radius: 999px;
-  font-size: 13px;
+  font-size: clamp(11px, calc(0.6vh + 7px), 13px);
+  line-height: 1.7;
+  text-align: center;
   color: #cfe9fb;
   user-select: none;
-  white-space: nowrap;
 }
 #hint b { color: #8fd3ff; }
 
-/* ---- Start screen ---- */
+/* ---- Start screen ----------------------------------------------------------
+   Thirteen lines of controls, a title, a tag line and a button: this panel is
+   the tallest thing in the game and it is the FIRST thing anyone sees, so it is
+   also the one place where running out of room is unforgivable. It is laid out
+   in three layers of defence, outermost first:
+
+     1. #start itself scrolls. The last resort — a window too short for even the
+        title and the button still reaches all of it.
+     2. .panel is capped at the viewport height and is a flex column, so
+     3. .ctrls (the control list, the only part that is arbitrarily long) takes
+        the squeeze and scrolls INSIDE the panel.
+
+   Layer 3 is the one that matters: it keeps "Dive In" nailed to the bottom of
+   the panel at every window size, so the button is never the thing you have to
+   scroll to find. Which is exactly what a fixed-height panel got wrong.
+
+   The vertical centring is `margin: auto` on the panel rather than
+   justify-content, on purpose: a centred flex item in a SCROLLING container
+   overflows equally in both directions and the overflow above the container's
+   top edge is unreachable — no scrollbar goes there. Auto margins collapse to
+   zero the moment the content is taller than the box, so the panel simply
+   starts at the top and scrolls down from there. */
 #start {
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Bottom padding reserves the strip the credit line is pinned to. */
+  padding: clamp(14px, 3vh, 40px) clamp(12px, 3vw, 32px) clamp(46px, 8vh, 64px);
   background:
     radial-gradient(circle at 50% 30%, rgba(20, 90, 140, 0.55), transparent 60%),
     linear-gradient(180deg, #06263c 0%, #041322 60%, #01080f 100%);
@@ -421,16 +495,53 @@ html, body {
 #start.gone { opacity: 0; pointer-events: none; }
 
 .panel {
-  text-align: center;
-  padding: 40px 48px;
+  /* margin, not justify-content — see the note on #start. */
+  margin: auto;
+  width: 100%;
   max-width: 460px;
+  /* Cap at the scroll container's height so the list inside is what gives, not
+     the panel. min-height: 0 lets this flex child actually shrink; without it a
+     flex item refuses to go below its content's height and the inner scroll
+     region never gets a chance to appear. */
+  max-height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  padding: clamp(20px, 4vh, 40px) clamp(20px, 4vw, 48px);
 }
-.panel h1 { font-size: 40px; letter-spacing: 1px; margin-bottom: 8px; }
-.tag { color: #8fb9d6; margin-bottom: 28px; font-size: 16px; }
+.panel h1 {
+  font-size: clamp(24px, calc(2.4vh + 2.2vw), 40px);
+  line-height: 1.15;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.tag { color: #8fb9d6; margin-bottom: clamp(14px, 3vh, 28px); font-size: clamp(13px, calc(0.9vh + 8px), 16px); }
 
 #loading { color: #6fb7e6; font-size: 15px; letter-spacing: 1px; }
 
-.ctrls { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; color: #cfe9fb; font-size: 15px; }
+/* The panel's flexible middle: the list scrolls, the button below it does not. */
+#controls {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.ctrls {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(7px, 1.4vh, 12px);
+  margin-bottom: clamp(14px, 3vh, 28px);
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Room for the scrollbar, so a thumb never lands on top of the text. */
+  padding-right: 6px;
+  color: #cfe9fb;
+  font-size: clamp(12.5px, calc(0.8vh + 8px), 15px);
+}
 .ctrls div { line-height: 1.5; }
 
 kbd {
@@ -447,9 +558,14 @@ kbd {
   font-weight: 700;
 }
 
+/* flex: none so the button keeps its full height while the list above it is the
+   thing being squeezed, and align-self so it stays button-shaped rather than
+   stretching to the panel's width. */
 #dive {
-  padding: 14px 42px;
-  font-size: 17px;
+  flex: none;
+  align-self: center;
+  padding: clamp(11px, 1.8vh, 14px) clamp(30px, 6vw, 42px);
+  font-size: clamp(15px, calc(1vh + 9px), 17px);
   font-weight: 700;
   letter-spacing: 1px;
   color: #04121f;
@@ -463,20 +579,34 @@ kbd {
 #dive:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(52, 169, 224, 0.55); }
 #dive:active { transform: translateY(0); }
 
+/* Pinned to the WINDOW, not to the end of the scrollable content, so it stays a
+   footer instead of turning into the last thing you scroll to. Fixed rather than
+   absolute for that reason — and it still fades out with the start screen, since
+   #start carries no transform and so is not a containing block for it.
+   The gradient is the overlap guard: when the panel is scrolling, its bottom
+   lines pass UNDER this line, and without something opaque behind the text the
+   two would interleave. It fades into #start's own bottom colour. */
 .credit {
-  position: absolute;
-  bottom: 16px;
-  width: 100%;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 12px clamp(10px, 1.6vh, 16px);
+  background: linear-gradient(180deg, rgba(1, 8, 15, 0), rgba(1, 8, 15, 0.92) 55%);
   text-align: center;
   color: #3d6d8c;
-  font-size: 12px;
+  font-size: clamp(10px, calc(0.5vh + 7px), 12px);
+  line-height: 1.5;
   letter-spacing: 1px;
+  pointer-events: none;
 }
 
 /* ---- MENU (E) ----
    The game's second screen: shell here, page contents built by src/menu/.
-   Sized at ~72% of the viewport — big enough to be a place you go, small enough
-   that the ocean is still visible around it and the pause reads as temporary. */
+   A margin of ocean is left visible around the panel at every window size — that
+   margin is what makes the pause read as temporary rather than as a mode change,
+   so #menu's padding is the panel's breathing room and the panel never exceeds
+   it. On a small window the padding tightens instead of the panel spilling. */
 #menu {
   position: fixed;
   inset: 0;
@@ -484,6 +614,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: clamp(8px, 2.5vh, 28px) clamp(8px, 2.5vw, 28px);
   background: rgba(2, 12, 22, 0.5);
   /* "a little blur": enough to push the reef back and stop it competing with the
      text, not so much that you lose where you are. */
@@ -492,14 +623,23 @@ kbd {
   user-select: none;
 }
 
+/* 72vw x 76vh was the old size, and it is wrong at both ends of the range: on a
+   1920-wide display it is a 1380px-wide panel of mostly air, and on a 768-tall
+   laptop it is 580px of box holding ~640px of stats, with the difference silently
+   clipped. So: a preferred size that stops growing past what the content needs,
+   and a viewport cap that lets it shrink to any window. Everything below it —
+   body, page, cards — is a chain of min-height: 0 so that the shrinking lands on
+   the scroll containers rather than on the panel. */
 .menu-panel {
   position: relative;      /* the close button hangs off this corner */
-  width: 72vw;
-  height: 76vh;
+  width: min(1180px, 100%);
+  height: min(760px, 100%);
+  max-height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 20px 22px 22px;
+  gap: clamp(9px, 1.6vh, 14px);
+  padding: clamp(14px, 2.2vh, 20px) clamp(13px, 1.6vw, 22px) clamp(14px, 2.2vh, 22px);
   background: rgba(4, 22, 38, 0.72);
   border: 1px solid rgba(120, 200, 255, 0.28);
   border-radius: 18px;
@@ -507,10 +647,13 @@ kbd {
 }
 
 .menu-title {
+  /* Padded clear of the close button, which is absolute and would otherwise be
+     overlapped by a title long enough to reach the corner on a narrow panel. */
+  padding: 0 44px;
   text-align: center;
-  font-size: 19px;
+  font-size: clamp(15px, calc(1.2vh + 9px), 19px);
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: clamp(1px, 0.2vw, 2px);
   color: #cfe9fb;
 }
 
@@ -518,10 +661,10 @@ kbd {
    centred on the PANEL, and a close button in the flow would shift it off centre. */
 .menu-close {
   position: absolute;
-  top: 14px;
-  right: 16px;
-  width: 32px;
-  height: 32px;
+  top: clamp(10px, 1.6vh, 14px);
+  right: clamp(11px, 1.2vw, 16px);
+  width: clamp(28px, 3.6vh, 32px);
+  height: clamp(28px, 3.6vh, 32px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -537,24 +680,31 @@ kbd {
 }
 .menu-close:hover { background: rgba(255, 122, 92, 0.18); color: #ffb3a1; }
 
-/* Tab strip: one row, dividers between, active tab lit from below. */
+/* Tab strip: one row, dividers between, active tab lit from below. It WRAPS on a
+   narrow panel — tabs squeezed to four characters each are worse than tabs on two
+   rows, and flex-shrink alone would do exactly that. flex: none on the strip so
+   a second row of tabs never comes out of the body's height. */
 .menu-tabs {
+  flex: none;
   display: flex;
+  flex-wrap: wrap;
   border: 1px solid rgba(120, 200, 255, 0.22);
   border-radius: 10px;
   overflow: hidden;
 }
 .menu-tab {
-  flex: 1;
-  padding: 11px 8px;
+  flex: 1 1 auto;
+  min-width: max-content;
+  padding: clamp(8px, 1.4vh, 11px) clamp(10px, 1vw, 14px);
   background: transparent;
   border: none;
   border-right: 1px solid rgba(120, 200, 255, 0.16);
   color: #7fa8c4;
   font: inherit;
-  font-size: 13px;
+  font-size: clamp(11px, calc(0.7vh + 7px), 13px);
   font-weight: 600;
-  letter-spacing: 1.5px;
+  letter-spacing: clamp(0.8px, 0.15vw, 1.5px);
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -566,7 +716,17 @@ kbd {
   box-shadow: inset 0 -2px 0 #7fe0ff;
 }
 
-.menu-body { flex: 1; min-height: 0; }
+/* The body scrolls only when a page cannot fit side by side any more — which in
+   practice means the stacked layout below, where the page is taller than the body
+   by design. Side by side the page is exactly 100% tall and this never engages,
+   and the cards do their own scrolling instead (so the 3D preview cannot be
+   scrolled off while you read the stats beside it). */
+.menu-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 
 /* A page fills the body and lays itself out — this is deliberately only a box.
    The two-column split belongs to the shark page, not to the shell. */
@@ -574,20 +734,26 @@ kbd {
   height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: clamp(10px, 1.4vw, 16px);
 }
 .menu-page[data-page="map"],
 .menu-page[data-page="missions"],
 .menu-page[data-page="quests"] { grid-template-columns: minmax(0, 1fr); }
 
+/* A card scrolls its own contents. This is the fix for the clipped stat list: it
+   was `overflow: hidden`, so on a short window the last row and its + button were
+   not merely cramped, they were unreachable and invisible. The 3D viewport opts
+   back out below — a canvas sized to its box has nothing to scroll. */
 .menu-card {
   position: relative;
   min-height: 0;
-  padding: 18px 20px;
+  padding: clamp(13px, 2vh, 18px) clamp(14px, 1.5vw, 20px);
   background: rgba(6, 30, 50, 0.5);
   border: 1px solid rgba(120, 200, 255, 0.2);
   border-radius: 14px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 /* Flex rather than a plain block, so a card title can carry something on its right
    (the points bank) without it being a float — a floated pill is taller than this
@@ -603,7 +769,7 @@ kbd {
   letter-spacing: 2.5px;
   text-transform: uppercase;
   color: #6fb7e6;
-  margin-bottom: 18px;
+  margin-bottom: clamp(11px, 2vh, 18px);
 }
 .menu-card-hint {
   position: absolute;
@@ -617,22 +783,34 @@ kbd {
 }
 
 /* The 3D viewport. padding: 0 so the canvas can fill the card edge to edge, and
-   the canvas is sized by CSS with preview.js chasing it (see fit() there). */
-.menu-viewport { padding: 0; }
+   the canvas is sized by CSS with preview.js chasing it (see fit() there).
+   overflow: hidden rather than the inherited auto: the canvas is exactly its box
+   at every size, so there is never anything to scroll, and a drag meant for the
+   turntable must not be read as a scroll gesture. */
+.menu-viewport { padding: 0; overflow: hidden; }
 .preview-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .preview-canvas:active { cursor: grabbing; }
 
-/* ---- Stats ---- */
-.stat-list { display: flex; flex-direction: column; gap: 20px; }
+/* ---- Stats ----
+   The gap carries most of the responsive work here: five rows at 20px apart is
+   100px of pure air, which is the single easiest thing to give back on a short
+   window and the last thing you would want to shrink the TYPE for. */
+.stat-list { display: flex; flex-direction: column; gap: clamp(11px, 2.2vh, 20px); }
+/* Wraps: name, value and + button on one line is the intent, but at a narrow
+   panel width — a stacked layout, or half of a 1024px window — "Attack speed"
+   plus "1.4 / 3.0 bites/s" plus a price does not fit, and squeezing them
+   truncates the number you came to read. row-gap keeps the wrap tidy. */
 .stat-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: baseline;
+  row-gap: 4px;
   margin-bottom: 7px;
 }
 /* The name takes the slack, so the value and the + button sit together on the
    right and the eye can run straight down the prices. */
-.stat-name { font-size: 14px; color: #eaf6ff; letter-spacing: 0.5px; margin-right: auto; }
+.stat-name { font-size: clamp(12.5px, calc(0.8vh + 7px), 14px); color: #eaf6ff; letter-spacing: 0.5px; margin-right: auto; }
 /* "Lv 3/8" beside the label. Levels bought out of levels for sale — the one number
    that says how far into a stat you already are without doing arithmetic on the bar. */
 .stat-lv {
@@ -650,9 +828,10 @@ kbd {
    after it is quieter. Both are on screen because the bar means nothing without
    the number it is a fraction OF. */
 .stat-value {
-  font-size: 16px;
+  font-size: clamp(14px, calc(0.9vh + 8px), 16px);
   font-weight: 700;
   color: #8fd3ff;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .stat-max { font-size: 12px; font-weight: 500; color: #5f92b3; letter-spacing: 0.5px; }
@@ -697,9 +876,10 @@ kbd {
    are meant to read "90" at 40 points and go and find something worth eating. */
 .stat-buy {
   display: inline-flex;
+  flex: none;
   align-items: baseline;
   gap: 5px;
-  margin-left: 14px;
+  margin-left: clamp(8px, 1vw, 14px);
   padding: 4px 10px;
   min-width: 54px;
   justify-content: center;
@@ -760,3 +940,85 @@ kbd {
 .menu-empty { display: flex; flex-direction: column; gap: 10px; }
 .menu-empty p { font-size: 14px; color: #a9cde5; line-height: 1.6; }
 .menu-empty .dim { color: #4d7f9e; font-size: 12px; letter-spacing: 1px; }
+
+/* ============================================================================
+   RESPONSIVE BREAKPOINTS
+
+   Everything above already scales continuously — clamp() on the paddings, gaps
+   and type, and min-height: 0 chains so the squeeze always lands on a scroll
+   container rather than clipping. The breakpoints below are only for the changes
+   that are a different LAYOUT rather than a smaller version of the same one,
+   because those cannot be interpolated.
+   ============================================================================ */
+
+/* ---- Narrow: the shark page stops being two columns -----------------------
+   Side by side, each card gets half the width. Below ~880px that half is around
+   380px, and a stat row (name, "1.4 / 3.0 bites/s", a + button) starts wrapping
+   every single line while the 3D preview beside it is a letterbox slot. Stacked
+   is strictly better: the preview keeps a usable aspect ratio, the stats get the
+   full width, and the body scrolls between them.
+
+   The viewport card needs an EXPLICIT height once stacked. Its canvas is
+   height: 100%, and 100% of a grid row sized to its content is zero — the
+   preview would vanish rather than shrink. preview.js's fit() picks the new box
+   up on its next frame, so nothing has to be told about this. */
+@media (max-width: 880px), (orientation: portrait) {
+  .menu-page {
+    height: auto;
+    min-height: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+  }
+  .menu-viewport { height: clamp(170px, 34vh, 300px); }
+}
+
+/* ---- Short: a 720p or 768p laptop -----------------------------------------
+   Here the panel is ~640px tall and the stat list is close to that on its own, so
+   the last row lands right on the fold. It scrolls, which is correct — but a list
+   whose first screenful ends mid-row reads as broken rather than as scrollable.
+   These three take the panel's own chrome down to the minimum that still reads,
+   which hands ~25px back to the body: the difference between a clean row boundary
+   and a half-cut one. The panel also takes the full height it is allowed, since
+   below this breakpoint the window is the binding constraint, not the 760px. */
+@media (max-height: 800px) {
+  .menu-panel { height: 100%; }
+  .menu-title { font-size: 15px; letter-spacing: 1px; }
+  .stat-note { margin-top: 4px; }
+}
+
+/* The 3D preview is the narrowable half of the shark page: the animal is centred
+   in its box and preview.js re-frames the camera to whatever aspect it is given,
+   so giving the stats the wider share costs a little air around the model and
+   nothing else — where a narrower stat list costs a wrapped row.
+   Guarded by min-width and orientation because it is MORE specific than the
+   single-column rule above (a class plus an attribute beats a bare class), so
+   without the guard it would win on a window that is both narrow and short and
+   quietly un-stack the layout. */
+@media (min-width: 881px) and (max-height: 800px) and (orientation: landscape) {
+  .menu-page[data-page="shark"] { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr); }
+}
+
+/* Same again for the start screen: the controls list is thirteen lines, so on a
+   short window it is doing the scrolling and the type can afford to tighten
+   rather than the panel's chrome eating into it. */
+@media (max-height: 800px) {
+  .panel { padding-top: clamp(16px, 3vh, 28px); padding-bottom: clamp(16px, 3vh, 28px); }
+  .ctrls { line-height: 1.45; }
+  kbd { padding: 2px 6px; font-size: 12px; min-width: 22px; }
+}
+
+/* ---- Very short: a landscape phone, or a laptop with devtools open ---------
+   Below this the tab strip and the title are competing with the body for space
+   that is not there. Both give up their own room; the body keeps what is left. */
+@media (max-height: 560px) {
+  .menu-panel { gap: 8px; padding: 10px 12px 12px; }
+  .menu-title { font-size: 14px; }
+  .menu-close { top: 8px; right: 9px; }
+  .menu-tab { padding: 6px 10px; }
+  .menu-card { padding: 11px 13px; }
+  .menu-card-title { margin-bottom: 9px; }
+  .stat-list { gap: 10px; }
+  .panel { padding: 14px 18px; }
+  .credit { display: none; }   /* it would be most of the window */
+  #start { padding-bottom: 14px; }
+}
