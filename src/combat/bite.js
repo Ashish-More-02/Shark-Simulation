@@ -24,12 +24,12 @@ import { health, healShark } from './health.js';
 //
 //  ---- WHAT A BITE IS WORTH ----
 //  biteDamage() — PLAYER.attack plus whatever the player has BOUGHT (upgrades.js),
-//  24 up to 80. Never a function of the shark's size: it briefly scaled with growth,
+//  20 up to 80. Never a function of the shark's size: it briefly scaled with growth,
 //  and a stat that rises on its own is a stat the upgrade screen cannot sell.
 //
 //  Prey health is in the same units (prey.js) and is baked from the BASE attack, so
-//  a whale is 240 hp forever and what an attack level actually buys is bites-to-kill:
-//  10, 8, 6, 5, 5, 4, 4, 3.
+//  a whale is 1000 hp forever and what an attack level actually buys is bites-to-kill:
+//  50 at level zero, 32 at level 2, 23 at 4, 18 at 6, 13 at 10.
 //
 //  What the shark's SIZE still buys is reach — BITE.reach x scale below — because
 //  that is the geometry of a bigger animal's jaws, not a number on a sheet.
@@ -38,7 +38,8 @@ import { health, healShark } from './health.js';
 //  biteCooldown(), the Attack speed stat: a deliberately slow 0.8 s at level 0, down
 //  to 0.3 s fully upgraded. Damage and rate multiply, so the two attack rows are the
 //  only pair on the sheet where buying one makes the other worth more — and at level
-//  zero a whale is eight seconds of unbroken biting, which is a fight you can lose.
+//  zero a whale is FORTY seconds of unbroken biting against an animal that kills you in
+//  two strikes, which is a fight you simply lose until you have spent some points.
 // ============================================================
 
 const mouth = new THREE.Vector3();
@@ -88,8 +89,9 @@ export function updateBite(dt) {
       `${hit.name} eaten   +${hit.points} pts${healed > 0 ? `   +${healed} hp` : ''}`
     );
   } else {
-    // The health readout, not a bite tally: a whale at 168 of 240 is the only way
-    // to tell an animal that is taking damage from one that is shrugging you off.
+    // The health readout, not a bite tally: a whale at 740 of 1000 is the only way to
+    // tell an animal that is taking damage from one that is shrugging you off — and at
+    // fifty bites it is the only thing making that fight legible at all.
     showBiteInfo(`${hit.name}   ${Math.ceil(hit.hp)} / ${hit.maxHp}`, hit.hp / hit.maxHp);
   }
 }

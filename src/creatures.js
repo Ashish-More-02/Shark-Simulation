@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { WORLD, CREATURES } from './config/config.js';
+import { WORLD, CREATURES, FLEE } from './config/config.js';
 import { LEVELS } from './config/levels/index.js';
 import { scene } from './core.js';
 import { floorAt } from './terrain.js';
@@ -51,6 +51,11 @@ const rng = makeStream('creatures');
 // wildlife lives in level 2 and its range has to grow when that level does.
 const ROAM_LIMIT = LEVELS[1].play - 10;
 
+// How steeply anything here may climb or dive, in radians off level. Deliberately
+// shallow: these are big animals and a steep pitch reads as a missile. A species going
+// up for air may raise it for the climb only — see `climbPitch` and breathe().
+const PITCH_LIMIT = 0.5;
+
 // scratch — allocated once, reused every frame
 const tmp = new THREE.Vector3();
 const away = new THREE.Vector3();
@@ -78,6 +83,46 @@ function columnY(frac) {
 // the short way round instead of unwinding the long way.
 function angleDelta(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
+}
+
+// ---- GOING UP FOR AIR (species with a `surface` block — the dolphin) -----------
+// Overrides the DEPTH of whatever waypoint the animal is heading for, and nothing else:
+// it keeps its horizontal target, so a breath is a long climb along the course it was
+// already swimming rather than a lift ride. That is both easier to look at and less code
+// than a second kind of waypoint.
+//
+// `surfacing` is a hard budget for the whole trip, climb included, so this can never
+// get stuck holding an animal against the ceiling — see the note on `surface` in
+// config.js for why the budget has to comfortably exceed the climb time.
+//
+// Runs BEFORE the flee block, which means a chase overrides a breath and the trip is
+// simply lost. That is the right precedence: nothing about being hunted should wait for
+// an animal to finish exhaling. It will try again on the next timer.
+function breathe(c, dt) {
+  const s = c.spec.surface;
+
+  if (c.surfacing > 0) {
+    c.surfacing -= dt;
+    // Re-asserted every frame: the dwell timer can hand out a fresh in-band waypoint
+    // mid-climb, and this has to keep winning until the trip is over.
+    c.target.y = WORLD.surface - s.depth;
+    // Steep for the climb, normal for everything else — the reason this is a per-animal
+    // field and not a constant. See the note on `climbPitch` in config.js: at the shared
+    // 0.5 rad limit the round trip is longer than the interval between trips.
+    c.pitchMax = s.climbPitch;
+    // Back down to the reef the moment the budget is spent. retarget = 0 rather than a
+    // fresh waypoint here, so the normal path at the top of the loop picks it next
+    // frame and there is only one place that ever calls newWaypoint(). The pitch limit
+    // goes back to normal with it, which is what makes the return a long glide.
+    if (c.surfacing <= 0) { c.retarget = 0; c.pitchMax = PITCH_LIMIT; }
+    return;
+  }
+
+  c.surfaceIn -= dt;
+  if (c.surfaceIn <= 0) {
+    c.surfacing = s.trip;
+    c.surfaceIn = s.every[0] + live() * s.every[1];
+  }
 }
 
 // `draw` is the stream to use: the seeded one for the waypoint an animal is BORN
@@ -148,7 +193,11 @@ function spawn(proto, spec) {
     yaw: rng() * Math.PI * 2,
     pitch: 0,
     roll: 0,
-    speed: spec.speed * (0.85 + rng() * 0.3),
+    // Per-individual jitter, then an optional hard ceiling. `speedCap` exists because
+    // the jitter can push a fast species past the SHARK's top speed, and prey that
+    // cannot be caught is not hard prey — it is scenery. Same guard, and the same
+    // reasoning, as FISH.sprintCap; see the dolphin's row in config.js.
+    speed: Math.min(spec.speed * (0.85 + rng() * 0.3), spec.speedCap ?? Infinity),
     // keep the belly off the sand and the dorsal fin under the surface
     clearance: dims.halfHeight * size + 0.6,
     // Rock collision: three spheres down the animal's length. A 21-unit whale
@@ -157,6 +206,13 @@ function spawn(proto, spec) {
     halfLength: dims.halfLength * size,
     girth: dims.halfHeight * size,
     retarget: 0,
+    fleeFor: 0,        // seconds left on a committed escape line (FLEE below)
+    // Air. Staggered from `live` rather than the seeded stream on purpose: when a
+    // dolphin first takes a breath is not something a world seed describes, and drawing
+    // from `rng` here would shift every creature spawned after it for a given seed.
+    surfaceIn: spec.surface ? live() * spec.surface.every[0] : 0,
+    surfacing: 0,      // seconds left of a trip to the surface (breathe())
+    pitchMax: PITCH_LIMIT,   // raised by breathe() for the climb, and only for that
     mixer: null,
     // Own heading vector rather than a shared scratch: prey.js holds onto this as
     // the axis of the animal's capsule hit volume, so it has to stay valid between
@@ -241,6 +297,10 @@ function reseat(c) {
   c.roll = 0;
   c.pivot.rotation.set(0, c.yaw, 0);
   c.body.rotation.z = 0;   // roll lives on the inner group, and it damps in slowly
+  // Eaten mid-breath: come back holding depth, not still climbing with a steep pitch
+  // limit left over from a trip that ended in the shark's jaws.
+  c.surfacing = 0;
+  c.pitchMax = PITCH_LIMIT;
   c.fwd.set(0, 0, -1).applyQuaternion(c.pivot.quaternion);
   newWaypoint(c, live);   // ...and now somewhere to actually swim
 }
@@ -271,17 +331,44 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
     // below cannot argue with it.
     if (spec.combat) updateAggression(c, dt, sharkPos, sharkGirth);
 
-    // Shy species break off and put distance between themselves and the shark.
-    // The whale (shy: 0) keeps its course — nothing down here worries it.
+    // ...then air, which only rewrites the target's DEPTH — so it stacks with the
+    // waypoint above rather than replacing it, and is itself overridden by the flee
+    // below. See breathe().
+    if (spec.surface) breathe(c, dt);
+
+    // ---- FLEEING: A COMMITTED ESCAPE LINE ----
+    // Shy species break off and put distance between themselves and the shark. The
+    // whale (shy: 0) keeps its course — nothing down here worries it — and a hostile
+    // one skips this outright: no species is currently both shy and a fighter, but
+    // this block runs after the chase above and writes the same `target`, so without
+    // the guard the day one is, it would flee and attack on alternate frames and do
+    // neither.
     //
-    // Skipped outright while hostile. No species is currently both shy and a
-    // fighter, but this block runs after the chase above and writes the same
-    // `target`, so without the guard the day one is, it would flee and attack on
-    // alternate frames and do neither.
-    if (spec.shy && !isHostile(c) && pos.distanceTo(sharkPos) < 22) {
+    // The heading is picked ONCE and held for FLEE.hold seconds. It used to be
+    // recomputed every frame from wherever the shark currently was, and that is what
+    // made a dolphin nauseating to chase: the target swung around the animal as the
+    // player circled it, so a creature with a high `turn` spent the whole pursuit
+    // pivoting on the spot. fish.js already solved this for shoals — "the escape
+    // heading is picked once per burst and held, so a shoal runs a line instead of
+    // pivoting with the shark" — and this is the same fix for the wildlife.
+    //
+    // `fleeFor` counts down for every shy animal whether or not it is currently
+    // running, so it is a genuine cooldown: leaving and re-entering the radius earns
+    // a fresh line rather than extending the old one.
+    if (c.fleeFor > 0) c.fleeFor -= dt;
+
+    if (spec.shy && !isHostile(c) && c.fleeFor <= 0 && pos.distanceTo(sharkPos) < FLEE.radius) {
       away.copy(pos).sub(sharkPos);
+      // MOSTLY LEVEL. The full vertical component is the other half of the dizziness:
+      // a shark chasing from below pushes the animal up, from above pushes it down,
+      // and the player's camera pitches with it the whole way. Keeping a quarter of it
+      // still reads as evasion without turning the chase into a rollercoaster.
+      away.y *= FLEE.rise;
+      // Straight above or below, there is no horizontal escape to pick — so keep the
+      // heading it already has instead of fleeing vertically.
+      if (away.x * away.x + away.z * away.z < 1e-4) { away.x = c.fwd.x; away.z = c.fwd.z; }
       if (away.lengthSq() < 1e-6) away.set(1, 0, 0);
-      away.normalize().multiplyScalar(34 * spec.shy);
+      away.normalize().multiplyScalar(FLEE.distance * spec.shy);
       c.target.copy(pos).add(away);
       // Keep the panic target inside the roam circle and the species' depth band.
       // Without this the flee vector can point at a spot outside the bounds, and
@@ -290,7 +377,11 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
       // `ring`'s inner radius here: fleeing across the middle beats not fleeing.
       clampRadius(c.target, ROAM_LIMIT * 0.95);
       c.target.y = THREE.MathUtils.clamp(c.target.y, columnY(spec.band[0]), columnY(spec.band[1]));
-      c.retarget = Math.min(c.retarget, 2);
+      c.fleeFor = FLEE.hold;
+      // MAX, not min: the dwell timer must not interrupt the run it just committed to.
+      // The old code shortened it instead, which re-picked a random waypoint two
+      // seconds into every escape — the second source of the jitter.
+      c.retarget = Math.max(c.retarget, FLEE.hold);
     }
 
     // --- steer: yaw at a capped rate, pitch damped toward the waypoint ---
@@ -312,7 +403,7 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
     const wantRoll = THREE.MathUtils.clamp(-yawRate * 0.35, -0.6, 0.6);
     c.roll = THREE.MathUtils.lerp(c.roll, wantRoll, 1 - Math.pow(0.06, dt));
 
-    const wantPitch = THREE.MathUtils.clamp(Math.atan2(tmp.y, Math.max(flat, 0.001)), -0.5, 0.5);
+    const wantPitch = THREE.MathUtils.clamp(Math.atan2(tmp.y, Math.max(flat, 0.001)), -c.pitchMax, c.pitchMax);
     c.pitch = THREE.MathUtils.lerp(c.pitch, wantPitch, 1 - Math.pow(0.15, dt));
 
     // --- move along the new heading ---

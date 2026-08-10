@@ -41,18 +41,22 @@ Now everything alive carries **hp**, and everything that hits carries **damage**
 The bridge between the old model and the new one is one line in `prey.js`:
 
 ```js
-entry.maxHp = entry.bites * PLAYER.attack;      // 10 bites x 24 dmg = 240 hp
+entry.maxHp = entry.bites * PLAYER.attack;      // 50 bites x 20 dmg = 1000 hp
 ```
 
-That is where the whale's **240 hp** comes from. It is not a new number picked out
-of the air: it is the number that makes a shark kill a whale in exactly the ten
-bites it always took. Every `bites:` row in `config.js` keeps its meaning, the fish
-still die in one snap, and nothing about the existing feel moved.
+That is where the whale's **1000 hp** comes from — 50 `bites` at the base 20 damage.
+Every `bites:` row in `config.js` keeps its meaning as "snaps to eat it, unupgraded",
+and the fish still die in one snap.
+
+> It started at 240 (10 bites × 24), chosen to preserve the ten-bite whale exactly. It
+> is 1000 now, and the base bite is 20 rather than 24, because the whale had to become
+> the wall the upgrade curve is measured against —
+> [progression.md](progression.md) has the arc.
 
 ### Nothing grows on its own
 
 Bite damage does not change with the shark's **size**, and neither do max health or
-the boost tank. Ten bites to a whale at 6 m, ten bites at 12.6 m. What raises them is
+the boost tank. Fifty bites to a whale at 6 m, fifty bites at 12.6 m. What raises them is
 one thing only: the player **buying a level** with points
 ([progression.md](progression.md)).
 
@@ -80,13 +84,13 @@ What growth still buys is **geometry, not numbers**:
 
 ### Growth itself is six times slower
 
-`SHARK.growthFull` went from **400 points to 2400** (and then to **3400** when the
-fish were priced by size — see [progression.md](progression.md)). At 400, one
-clearing of the reef took the shark from 6 m to nearly its full 12.6 m — the entire
-growth arc spent inside a single session, on the one stat in the game that is
-genuinely real. Now a full clear is roughly a sixth of the way there, so size is a
-long arc across many hunts, which is what it has to be if it is the visible reward
-for the whole hunting loop.
+`SHARK.growthFull` went from **400 points to 2400**, and has been raised twice more
+since as the economy inflated — it is **20,000** now, and
+[progression.md](progression.md) tracks why. At 400, one clearing of the reef took the
+shark from 6 m to nearly its full 12.6 m: the entire growth arc spent inside a single
+session, on the one stat in the game that is genuinely real. The rule that came out of
+it is that this number has to stay a fraction of what the whole game pays out, or size
+stops meaning anything.
 
 This also means points *outlive* the thing they buy, which is exactly what the
 upgrade system needed: a currency you keep earning long after your body has stopped
@@ -99,9 +103,9 @@ being the interesting thing it pays for.
 | | value | where it comes from |
 |---|---|---|
 | Max health | `maxHealth()` — **100 hp** at level 0 | already in the stat sheet as a placeholder; it is real now, and upgradable to 500 |
-| Bite damage | `biteDamage()` — **24, and 24 at every size** | ditto; the upgrade system raises it ([progression.md](progression.md)) |
+| Bite damage | `biteDamage()` — **20, and 20 at every size** | ditto; the upgrade system raises it to 80 ([progression.md](progression.md)) |
 | Grace after a hit | `COMBAT.hurtGrace` — **0.3 s** | stops two whales landing on the same frame reading as one 36-damage hit |
-| Healing from a kill | `COMBAT.healPerPoint` — **0.6 hp per growth point** | a whale heals 42, a dolphin 8, a reef fish 0.6 |
+| Healing from a kill | `COMBAT.healPerPoint` — **0.4 hp per point** | a whale heals 60, a dolphin 16, a reef fish 0.4 |
 | Out-of-combat regen | `COMBAT.regenRate` — **0.7 hp/s** after `regenDelay` **8 s** | ~2.5 minutes for a full heal: slow enough that eating is still the answer |
 | Death pause | `COMBAT.deathHold` — **2.2 s** | you drift, then wake in the shallows |
 
@@ -155,7 +159,7 @@ thin — `death-and-respawn.md` owns the real version.
                           ┌────────────────────────┐
                           │ WINDUP 0.75s (rears)   │
                           │        ↓               │
-                          │ LUNGE  0.55s (rams)    │  hit: 18 dmg inside 7 m
+                          │ LUNGE  0.55s (rams)    │  hit: 54 dmg inside 7 m
                           │        ↓               │
                           │ COOLDOWN 3s            │
                           └────────────────────────┘
@@ -197,18 +201,32 @@ is the number to protect if any of the others get retuned.
 > the feel moved: 9.2 m of dodge against a 7 m reach is a smaller margin than 13
 > against 7, so you now have to actually react, but the guarantee is intact.
 
-The rhythm it produces is: bite twice, back off while it rears, come back in. At
-18 damage a hit and 100 hp, a shark that never dodges dies in six exchanges — inside
-twenty seconds — and a shark that dodges well takes the whale for free but slowly.
-Combat as a conversation, which is the whole reason to have a windup at all.
+The rhythm it produces is: bite twice, back off while it rears, come back in. Combat as
+a conversation, which is the whole reason to have a windup at all.
 
-**And it is no longer nearly free.** The bite cooldown was doubled to 0.8 s when the
-upgrade system landed ([progression.md](progression.md)), which puts a whale at eight
-seconds of unbroken biting for an unupgraded shark — three of its strikes, 54 of your
-100 hp, before you have counted the time spent closing back in after each dodge. So
-the first whale is a fight you can lose, which is the whole point of having one: it is
-the difficulty gate the soft-gate rule in §2 wants, and the thing the first few
-upgrade levels are for.
+**And it is a fight you lose at level zero.** At **54 damage a strike** against a
+starting shark's 100 hp, *two* connect and you are dead. Meanwhile the whale's 1000 hp
+is fifty bites, and at the base 0.8 s cooldown that is forty seconds of contact — about
+fourteen strikes' worth of exposure for a health pool that survives two.
+
+That is deliberate, and it is the shape of the whole game's difficulty:
+
+| All four upgrade rows at | Bites | Biting time | Strikes taken | vs your hp |
+|---|---|---|---|---|
+| level 0 | 50 | 40.0 s | ~14 | 756 vs 100 — **dead** |
+| level 2 | 32 | 22.4 s | ~8 | 432 vs 180 — **dead** |
+| level 4 | 23 | 13.8 s | ~5 | 270 vs 260 — **dead** |
+| **level 5** | 20 | 11.0 s | ~4 | 216 vs 300 — **you win** |
+| level 10 | 13 | 3.9 s | ~2 | 108 vs 500 — comfortably |
+
+(Those strike counts assume you never break off, which no real fight looks like — every
+dodge trades damage taken for time, so a careful player wins it earlier than level 5.)
+
+So the whale is the **difficulty gate** the soft-gate rule in §2 asks for: nothing locks
+it, it is right there in the reef from the first minute, and what stops you is that it
+kills you. It is also the thing the first few thousand points of upgrades are *for*. The
+honest cost of that is written up in progression.md's known limits: there is no other
+combat in the game yet, so the opening hour has none.
 
 ### It cannot chase you down, on purpose
 
@@ -308,7 +326,8 @@ which matters the moment anything other than the whale can be hurt.
 
 ## What this deliberately is not
 
-- **Not the disposition system.** Dolphins and anglerfish still only flee (`shy`),
+- **Not the disposition system.** Dolphins and anglerfish still only flee (`shy`, now
+  along a committed escape line rather than pivoting with you — see `FLEE` in config),
   and no species is territorial or aggressive. That is roadmap Stage 3 and
   `dispositions.md`. What is here is one row of that table, built early because
   Stage 1 needs *something* to hurt you.
@@ -361,7 +380,7 @@ static markup in `index.html` toggled by class.
 | `hurtGrace` | 0.3 s | two whales must not stack on one frame |
 | `regenDelay` | 8 s | long enough that it never ticks during a fight |
 | `regenRate` | 0.7 hp/s | worse than one dolphin — a floor, not a heal |
-| `healPerPoint` | 0.6 | whale 42 hp, dolphin 8, reef fish 0.6 |
+| `healPerPoint` | 0.4 | whale 60 hp, dolphin 16, reef fish 0.4 |
 | `deathHold` | 2.2 s | long enough to read the banner, short enough not to annoy |
 | `warnHealth` | 0.6 | the head bar turns amber |
 | `lowHealth` | 0.3 | it turns red, and the vignette stops being a flash and becomes a state |
@@ -370,7 +389,7 @@ static markup in `index.html` toggled by class.
 
 | | | why |
 |---|---|---|
-| `attack` | 18 dmg | six unanswered hits kill a fresh shark |
+| `attack` | 54 dmg | **two** unanswered hits kill a fresh shark; ten kill a fully upgraded one |
 | `cooldown` | 3 s | slow enough to read, fast enough to be in the fight |
 | `commit` | 9 m | just outside your own bite reach (3.4 + its girth ≈ 6 m) |
 | `reach` | 7 m | strictly less than `commit`, so a strike can miss |

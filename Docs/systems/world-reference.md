@@ -304,7 +304,7 @@ the same height at every depth, in every level.
 |---|---|
 | Bait shoals | 5.9 – 27.1 |
 | Blue fish / clownfish | 2.0 – 9.2 / 0.7 – 5.9 |
-| Whale / dolphin | 13.9 – 25.7 / 16.5 – 31.3 |
+| Whale / dolphin | 13.9 – 25.7 / 18.2 – 27.1 |
 | Anglerfish | 0.7 – 7.3 |
 
 The upper storey (`FISH.highSchools`) fills water *above* the habitat band, and

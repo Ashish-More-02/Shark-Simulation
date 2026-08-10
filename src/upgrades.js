@@ -26,7 +26,7 @@ import { preyStats } from './prey.js';
 //
 //  What deliberately does NOT go through here: prey hit points. An animal's maxHp is
 //  `bites x PLAYER.attack` at the BASE attack (prey.js), baked at spawn — a whale is
-//  240 hp forever, and upgrading your bite lowers how many bites that is. If prey hp
+//  1000 hp forever, and upgrading your bite lowers how many bites that is. If prey hp
 //  ever tracked your upgraded damage, buying attack would do literally nothing.
 //
 //  Full design, and every number: Docs/systems/progression.md
@@ -47,24 +47,48 @@ export function earned() {
   return preyStats.points;
 }
 
+// The spec for one upgradable stat, or undefined. Guards on `levels` rather than on
+// mere presence, because UPGRADES also carries `costGrowth` — a bare number shared by
+// every row. Without this, `costGrowth` would look exactly like a purchasable stat to
+// anything that asked, and the failure would be silent.
+function specFor(key) {
+  const spec = UPGRADES[key];
+  return spec && spec.levels ? spec : undefined;
+}
+
+// Also exported, so the menu can ask "is this row for sale at all" with the same
+// answer this module uses rather than its own guess at one.
+export function isUpgradable(key) {
+  return !!specFor(key);
+}
+
 export function levelOf(key) {
   return levels[key] ?? 0;
 }
 
 export function levelsFor(key) {
-  return UPGRADES[key]?.levels ?? 0;
+  return specFor(key)?.levels ?? 0;
 }
 
 export function isMaxed(key) {
-  return !!UPGRADES[key] && levels[key] >= UPGRADES[key].levels;
+  const spec = specFor(key);
+  return !!spec && levels[key] >= spec.levels;
 }
 
-// Points for the NEXT level, or null if there isn't one. Rises with the level being
-// bought: the first is `cost`, the eighth is 8 x cost.
+// Points for the NEXT level, or null if there isn't one.
+//
+// GEOMETRIC, not linear: each level costs costGrowth (1.2) times the one before, so a
+// row reads 450, 540, 648 ... 2322. Linear-in-level was the first attempt and it is
+// the wrong curve for a ten-level row — it makes the last level only ten times the
+// first, so the tail of every stat is cheap relative to the income you have by the
+// time you reach it, and the sheet finishes itself. Compounding keeps the last level
+// of anything expensive no matter how rich the player has become.
+//
+// Rounded, so the menu never prints a price with a decimal in it.
 export function costOf(key) {
-  const spec = UPGRADES[key];
+  const spec = specFor(key);
   if (!spec || isMaxed(key)) return null;
-  return spec.cost * (levels[key] + 1);
+  return Math.round(spec.cost * Math.pow(UPGRADES.costGrowth, levels[key]));
 }
 
 export function canBuy(key) {
@@ -86,7 +110,7 @@ export function buy(key) {
 // base + level x step, in one line each. Every consumer in the game reads these.
 
 function value(base, key) {
-  const spec = UPGRADES[key];
+  const spec = specFor(key);
   return spec ? base + levels[key] * spec.step : base;
 }
 
@@ -94,7 +118,7 @@ function value(base, key) {
 // stat sheet draws its bars against, so the empty part of a bar is exactly the
 // upgrades that are still for sale — never an aspirational number nobody can reach.
 function ceiling(base, key) {
-  const spec = UPGRADES[key];
+  const spec = specFor(key);
   return spec ? base + spec.levels * spec.step : base;
 }
 
@@ -112,7 +136,7 @@ export function refillSeconds() {
 // Every other stat improves by going UP. This one improves by the bite cooldown
 // coming DOWN, so it gets its own pair of getters rather than being forced through
 // value()/ceiling() with a negative step — which would work, and would leave a
-// `step: -0.02` in config for someone to "fix" later.
+// `step: -0.05` in config for someone to "fix" later.
 //
 // The floor is a hard guard, not a tuning value: `step x levels` is authored to land
 // on 0.3 s, but a cooldown at or below zero would let one click bite every frame, and

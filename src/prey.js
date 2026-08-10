@@ -28,11 +28,11 @@ import { BITE, PLAYER } from './config/config.js';
 //  An animal's health is measured in DAMAGE, not in snaps, so that an upgraded shark
 //  kills faster and so the whale can have a real health bar to fight down. But
 //  `bites` stays the number every config row is authored in, and the bridge is one
-//  multiplication: maxHp = bites x PLAYER.attack. A ten-bite whale is 240 hp and an
-//  unupgraded shark, hitting for 24, still kills it in ten.
+//  multiplication: maxHp = bites x PLAYER.attack. A fifty-bite whale is 1000 hp and an
+//  unupgraded shark, hitting for 20, needs all fifty of them.
 //
 //  Note the BASE attack, deliberately, and never the upgraded biteDamage(): the whale
-//  is 240 hp forever, and what an Attack level buys is fewer bites to get through it.
+//  is 1000 hp forever, and what an Attack level buys is fewer bites to get through it.
 //  Scale prey hp with the player's damage and the upgrade cancels itself out.
 //
 //  Cost: nothing per frame except a countdown over the animals currently dead

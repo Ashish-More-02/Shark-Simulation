@@ -122,9 +122,9 @@ export function setTrack(name, metres, bearing, hostile = false) {
 // Both writes are quantised. `level` changes every single frame the ring is up,
 // but a full 6-second drain only crosses 200 steps, so at 60 fps that drops
 // roughly two writes in three — and a step is a third of a degree of arc, under a
-// pixel on a 50px ring. `scale` creeps by well under 0.001 per fish now that
-// growthFull is 2400, so quantising to hundredths makes it one write per twenty-odd
-// fish instead of one per frame.
+// pixel on a 50px ring. `scale` creeps by a rounding error per fish now that growthFull
+// is 20,000, so quantising to hundredths makes it one write per many dozens of fish
+// instead of one per frame.
 let lastStep = -1, lastOn = null, lastSpent = null, lastScale = -1;
 
 export function setStamina(level, visible, spent, scale) {

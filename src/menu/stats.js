@@ -3,7 +3,7 @@ import { DEEPEST } from '../levels.js';
 import {
   maxHealth, biteDamage, boostSeconds, refillSeconds, biteCooldown, attackRate,
   healthCeiling, attackCeiling, staminaCeiling, attackRateCeiling,
-  levelOf, levelsFor, costOf, canBuy, isMaxed,
+  levelOf, levelsFor, costOf, canBuy, isMaxed, isUpgradable,
 } from '../upgrades.js';
 
 // ============================================================
@@ -55,12 +55,17 @@ const CRUISE_MPH = (SHARK.accel / SHARK.drag) * MPH;
 // off SHARK rather than restated: bites-to-kill-a-whale is what an attack level
 // actually means, and if the whale's `bites` is ever retuned these notes have to
 // move with it. Found by name so it survives the CREATURES array being reordered.
-const WHALE_HP = (CREATURES.find((c) => c.model === 'whale')?.bites ?? 0) * PLAYER.attack;
+const WHALE = CREATURES.find((c) => c.model === 'whale');
+const WHALE_HP = (WHALE?.bites ?? 0) * PLAYER.attack;
+// What one whale strike takes off you. Read from its own combat block for the same
+// reason: "survives N strikes" is the only reading of the Health row that means
+// anything, and it has to move when the whale is retuned.
+const WHALE_HIT = WHALE?.combat?.attack ?? 1;
 
 // The purchase half of a row. Null for a stat with nothing for sale, which is what
 // makes the page draw no button at all rather than a dead one.
 function buyState(key) {
-  if (!UPGRADES[key]) return null;
+  if (!isUpgradable(key)) return null;
   return {
     level: levelOf(key),
     levels: levelsFor(key),
@@ -82,7 +87,7 @@ export function readStats() {
       now: maxHealth(),
       max: healthCeiling(),
       unit: 'hp',
-      note: `+${UPGRADES.health.step} hp a level · survives ${Math.ceil(maxHealth() / 18)} whale strikes · eating heals ${COMBAT.healPerPoint} hp per point`,
+      note: `+${UPGRADES.health.step} hp a level · survives ${Math.floor((maxHealth() - 1) / WHALE_HIT) + 1} whale strikes (${WHALE_HIT} dmg each) · eating heals ${COMBAT.healPerPoint} hp per point`,
       buy: buyState('health'),
     },
     {
@@ -93,7 +98,8 @@ export function readStats() {
       now: tank,
       max: staminaCeiling(),
       unit: 's of boost',
-      note: `+${UPGRADES.stamina.step}s a level · ${tank}s held down · ${refillSeconds().toFixed(1)}s to refill from empty`,
+      decimals: 1,      // the step is 1.4 s, so the value is rarely a whole number
+      note: `+${UPGRADES.stamina.step}s a level · ${tank.toFixed(1)}s held down · ${refillSeconds().toFixed(1)}s to refill from empty`,
       buy: buyState('stamina'),
     },
     {

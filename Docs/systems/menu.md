@@ -166,16 +166,18 @@ whether that is six seconds or two.
 
 | Stat | now | fully upgraded | For sale? |
 |---|---|---|---|
-| **Health** | `maxHealth()` — 100 hp at Lv 0 | 500 hp at Lv 8 | ✓ **+50 hp**, 50 pts |
-| **Stamina** | `boostSeconds()` — 6 s at Lv 0 | 20 s at Lv 7 | ✓ **+2 s**, 70 pts |
+| **Health** | `maxHealth()` — 100 hp at Lv 0 | 500 hp at Lv 10 | ✓ **+40 hp**, from 450 pts |
+| **Stamina** | `boostSeconds()` — 6 s at Lv 0 | 20 s at Lv 10 | ✓ **+1.4 s**, from 500 pts |
 | **Top speed** | `SHARK.boostSpeed` — 34 mph | — | ✗ locked, and captioned why |
-| **Attack power** | `biteDamage()` — 24 dmg at Lv 0 | 80 dmg at Lv 7 | ✓ **+8 dmg**, 100 pts |
-| **Attack speed** | `attackRate()` — 1.25 bites/s at Lv 0 | 3.3 bites/s at Lv 5 | ✓ **−100 ms**, 100 pts |
+| **Attack power** | `biteDamage()` — 20 dmg at Lv 0 | 80 dmg at Lv 10 | ✓ **+6 dmg**, from 600 pts |
+| **Attack speed** | `attackRate()` — 1.25 bites/s at Lv 0 | 3.3 bites/s at Lv 10 | ✓ **−50 ms**, from 550 pts |
 | **Pressure** | `PLAYER.pressure` — 14 atm | `PLAYER.pressureCap` — 60 | ✗ placeholder |
 
 **This panel is also the shop** — see
 [progression.md](progression.md) for the currency, the prices and what each level
-does to the world. Four rows carry a `+` button and a `Lv 3/8` pill; the two that do
+does to the world — ten levels each, on a cost curve that compounds 20% a level, so
+prices run from a few hundred points to a few thousand. Four rows carry a `+` button and
+a `Lv 3/10` pill; the two that do
 not carry a caption saying why, because an inert control with no explanation reads as
 a broken one. **Attack speed is shown as bites per second** rather than as its
 underlying cooldown: it is the one stat that improves by a number going DOWN, and a bar
