@@ -16,6 +16,8 @@
 //    orbs.js       collectibles
 //    audio.js      ambience loops, speed-reactive swim sound, SFX
 //    shark.js      rig, handling, swim clip, chase camera
+//    upgrades.js   points earned and spent, and every live player stat
+//    combat/       the fight: bite damage, the shark's health, the whale's temper
 //    input.js      keyboard / mouse-look
 //    hud.js        the HUD — the only module that touches the HUD's DOM
 //    menu/         the E menu: shell, 3D preview, stats, pages

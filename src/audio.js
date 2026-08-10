@@ -89,6 +89,22 @@ export function playEat() {
   playOnce(AUDIO.eat);
 }
 
+// The shark taking a hit, and the whale winding up to deliver one. See the note on
+// these two in AUDIO: both are existing files played well off their recorded rate.
+export function playHurt() {
+  playOnce(AUDIO.hurt);
+}
+
+export function playWhaleStrike() {
+  playOnce(AUDIO.whaleStrike);
+}
+
+// Waking at the sanctuary after a death — the same splash the game opens on, which
+// is the right sound for it: you are dropped back into the water.
+export function playSplash() {
+  playOnce(AUDIO.splash);
+}
+
 export function toggleMute() {
   muted = !muted;
   for (const el of loops) el.muted = muted;

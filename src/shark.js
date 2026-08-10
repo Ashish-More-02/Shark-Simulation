@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { WORLD, SHARK, MODELS, BITE, STAMINA } from './config/config.js';
+import { WORLD, SHARK, MODELS, BITE, COMBAT } from './config/config.js';
 import { scene, camera } from './core.js';
 import { floorAt } from './terrain.js';
 import { clampToWorld } from './levels.js';
 import { resolveSolids, resolveBody } from './collision.js';
 import { turnAxis, pitchAxis, thrustAxis, boosting, consumeMouseLook } from './input.js';
 import { preyStats } from './prey.js';
+import { boostSeconds, refillSeconds } from './upgrades.js';
 
 // ============================================================
 //  SHARK  — rig, handling, skeletal swim cycle, chase camera
@@ -30,12 +31,38 @@ export const sharkState = {
   staminaSpent: false,  // bottomed out — Shift is dead until stamina is back to 1
   boostHeld: false,     // Shift down this frame, whether or not it bought anything
   sprinting: false,     // ...and whether it actually did
+  // Seconds of "your input does nothing" left. Set by combat/health.js on death and
+  // cleared by respawnShark(). The shark keeps its momentum and drifts, which is
+  // both cheaper and better looking than freezing it: a hard stop reads as a bug,
+  // and a fade to black is a sequence this build has not earned yet.
+  stunned: 0,
 };
 
 let mixer = null, swimAction = null;
 let yaw = 0, pitch = 0;
 const camOffset = new THREE.Vector3(...SHARK.camOffset);
 const camTarget = new THREE.Vector3();
+
+// ---- HIT FLASH -------------------------------------------------------------
+// Every material on the shark, with the emissive values it shipped with, so a hit
+// can blow the whole body out to white and put it back exactly as it was. Collected
+// once at build: the rig is one model and its material list never changes.
+//
+// Why emissive and not a colour swap: `color` is multiplied by the albedo texture,
+// so driving it to white just brightens the texture and the shark still reads as a
+// shark. Emissive is ADDED after lighting, so it washes the silhouette out
+// regardless of what the texture or the fog are doing — which is the point. Being
+// hit has to be legible in the half second you are looking at the whale, not at
+// yourself.
+//
+// The menu's preview shark is a separate load with its own materials (preview.js),
+// so nothing here touches it.
+const hitMats = [];
+let hitFlash = 0;
+
+export function flashHit() {
+  hitFlash = COMBAT.hitFlash;
+}
 
 export function createShark(model) {
   // rig: pivot (heading) -> body (sway/roll) -> model
@@ -50,6 +77,20 @@ export function createShark(model) {
 
   sharkState.obj = obj;
   sharkState.body = body;
+
+  // See the HIT FLASH note above. `emissive` is cloned rather than referenced, or
+  // the "original" would be the same Color object the flash writes into.
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const mat of (Array.isArray(o.material) ? o.material : [o.material])) {
+      if (!mat.emissive) continue;      // no emissive term to drive on this material
+      hitMats.push({ mat, emissive: mat.emissive.clone(), intensity: mat.emissiveIntensity ?? 1 });
+    }
+  });
+  // An unlit model (KHR_materials_unlit -> MeshBasicMaterial) has no emissive to
+  // drive, and the flash would then do nothing at all — silently, which is the worst
+  // way for a piece of combat feedback to fail. Say so.
+  if (!hitMats.length) console.warn('shark model has no emissive materials — the hit flash will not show');
 
   // drive the baked skeletal swim cycle (tail + pectoral fins)
   const clips = model.clips;
@@ -68,7 +109,15 @@ export function createShark(model) {
 
 export function updateShark(dt, t) {
   const { obj, body } = sharkState;
+  // Consumed whether or not it is used: a stunned shark that banked its mouse-look
+  // would snap round through every degree of it the moment control came back.
   const look = consumeMouseLook();
+
+  // Dead (combat/health.js). Every input axis reads zero, so the shark coasts to a
+  // stop on drag alone, and the chase camera at the bottom keeps working — you
+  // watch your own shark drift, which is the whole of the death beat.
+  const stunned = sharkState.stunned > 0;
+  if (stunned) sharkState.stunned = Math.max(0, sharkState.stunned - dt);
 
   // --- growth: points -> scale, damped so a big meal swells in rather than pops ---
   const want = 1 + (SHARK.maxScale - 1) * Math.min(preyStats.points / SHARK.growthFull, 1);
@@ -84,22 +133,27 @@ export function updateShark(dt, t) {
   const scale = sharkState.scale;
 
   // --- turning (keys + mouse) ---
-  const turnInput = turnAxis();
-  yaw += turnInput * SHARK.turn * dt + look.yaw;
-
-  pitch += pitchAxis() * SHARK.pitchRate * dt + look.pitch;
-  pitch = THREE.MathUtils.clamp(pitch, -SHARK.pitchLimit, SHARK.pitchLimit);
+  const turnInput = stunned ? 0 : turnAxis();
+  if (!stunned) {
+    yaw += turnInput * SHARK.turn * dt + look.yaw;
+    pitch += pitchAxis() * SHARK.pitchRate * dt + look.pitch;
+    pitch = THREE.MathUtils.clamp(pitch, -SHARK.pitchLimit, SHARK.pitchLimit);
+  }
 
   // --- boost stamina ---
   // Drain is charged for the boost you RECEIVE, not for the key you hold: Shift
   // while drifting or reversing never bought a sprint (boost has always required
   // forward thrust), so it must not cost anything either. The ring still shows
   // while merely holding Shift — that's what makes it a gauge you can check.
-  const thrust = thrustAxis();
-  const held = boosting();
+  const thrust = stunned ? 0 : thrustAxis();
+  const held = !stunned && boosting();
   const sprinting = held && thrust > 0 && !sharkState.staminaSpent;
   if (sprinting) {
-    sharkState.stamina -= dt / STAMINA.boostSeconds;
+    // boostSeconds(), not STAMINA.boostSeconds: the tank's SIZE is an upgrade
+    // (upgrades.js). `stamina` stays a 0..1 fraction of whatever the tank currently
+    // is, so a level bought mid-swim needs no migration — the same fraction is
+    // simply worth more seconds, and the ring beside the shark drains slower.
+    sharkState.stamina -= dt / boostSeconds();
     if (sharkState.stamina <= 0) {
       sharkState.stamina = 0;
       sharkState.staminaSpent = true;    // latched — see the note in config.js
@@ -107,8 +161,9 @@ export function updateShark(dt, t) {
   } else if (sharkState.stamina < 1) {
     // One constant rate, so a half-spent bar costs half of refillSeconds to
     // recover. Refills while Shift is still down, which is the only way out of
-    // the spent state.
-    sharkState.stamina += dt / STAMINA.refillSeconds;
+    // the spent state. A bigger tank takes longer to fill, but less than
+    // proportionally — see the note on UPGRADES.stamina.
+    sharkState.stamina += dt / refillSeconds();
     if (sharkState.stamina >= 1) {
       sharkState.stamina = 1;
       sharkState.staminaSpent = false;
@@ -184,6 +239,26 @@ export function updateShark(dt, t) {
     body.rotation.y = Math.sin(t * swimRate) * 0.18 * (0.4 + absSpeed / SHARK.maxSpeed);
   }
 
+  // --- hit flash ---
+  // Ramps DOWN from the moment of the hit rather than in and out: the impact is on
+  // frame one, so the brightest frame has to be frame one too. Anything with an
+  // attack is a sine and reads as a glow rather than as a blow.
+  if (hitFlash > 0) {
+    hitFlash = Math.max(0, hitFlash - dt);
+    const k = hitFlash / COMBAT.hitFlash;      // 1 -> 0 over the flash
+    for (const m of hitMats) {
+      if (hitFlash > 0) {
+        m.mat.emissive.setScalar(k);
+        m.mat.emissiveIntensity = m.intensity + k * COMBAT.hitFlashGain;
+      } else {
+        // Restored exactly, not zeroed: the shark's materials may legitimately ship
+        // an emissive of their own, and a flash must not be a permanent edit.
+        m.mat.emissive.copy(m.emissive);
+        m.mat.emissiveIntensity = m.intensity;
+      }
+    }
+  }
+
   // --- bank into turns + gentle bob (on top of the skeletal animation) ---
   body.rotation.z = THREE.MathUtils.lerp(body.rotation.z, -turnInput * 0.5, 0.1);
   body.position.y = Math.sin(t * 2.2) * 0.12 * scale;
@@ -208,10 +283,46 @@ export function updateShark(dt, t) {
   updateChaseCamera(dt, scale);
 }
 
+// Put the shark back at the sanctuary. Called by world.js off the health system's
+// respawn hook (combat/health.js), which owns the timing and the banner; this owns
+// only the rig.
+//
+// SHARK.startPos is the middle of level 1 — the de facto sanctuary until
+// sanctuaries exist — and the floor clamp in updateShark reseats it on the dunes on
+// the first frame, exactly as it does at boot.
+//
+// Growth is NOT reset. Roadmap §4: death costs you the swim back, never your
+// progress. Stamina is refilled because arriving with a spent bar would mean the
+// first thing a respawn does is take something else away from you.
+export function respawnShark() {
+  const { obj } = sharkState;
+  obj.position.set(...SHARK.startPos);
+  yaw = 0;
+  pitch = 0;
+  obj.rotation.set(0, 0, 0);
+  sharkState.forward.set(0, 0, -1).applyQuaternion(obj.quaternion);
+  sharkState.speed = 0;
+  sharkState.snap = 0;
+  sharkState.stunned = 0;
+  sharkState.stamina = 1;
+  sharkState.staminaSpent = false;
+
+  // SNAP the camera rather than letting it lerp. Its easing covers about 10% of the
+  // gap per frame, so from the reef to the shallows it would fly 280 m across the
+  // whole world — through the canyon wall — over about half a second.
+  snapCamera();
+}
+
 // The camera deliberately does NOT track the shark's growth — see the camGrowth
 // note in config.js. Matching the offset to the scale is what makes a growing
 // shark look like a shrinking ocean.
 let camScale = -1;
+
+function snapCamera() {
+  const pos = sharkState.obj.position;
+  camera.position.copy(camOffset).applyQuaternion(sharkState.obj.quaternion).add(pos);
+  camera.lookAt(pos.x, pos.y + 0.6 * Math.max(camScale, 1), pos.z);
+}
 
 function updateChaseCamera(dt, scale) {
   const pos = sharkState.obj.position;

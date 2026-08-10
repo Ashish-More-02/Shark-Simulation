@@ -19,10 +19,12 @@
 
   <!-- HUD -->
   <div id="hud" class="hidden">
+    <div class="hud-row"><span class="label">HEALTH</span><span id="hp">100 / 100</span></div>
     <div class="hud-row"><span class="label">DEPTH</span><span id="depth">0 m</span></div>
     <div class="hud-row"><span class="label">SPEED</span><span id="speed">0 mph</span></div>
     <div class="hud-row"><span class="label">ORBS</span><span id="orbs">0 / 0</span></div>
     <div class="hud-row"><span class="label">EATEN</span><span id="eaten">0</span></div>
+    <div class="hud-row"><span class="label">POINTS</span><span id="points">0</span></div>
     <div class="hud-row"><span class="label">SIZE</span><span id="size">6.0 m</span></div>
     <div class="hud-row"><span class="label">NEAREST</span><span id="track">—</span></div>
   </div>
@@ -37,13 +39,25 @@
   <!-- Placement editor readout — toggled with F4. See src/editor.js. -->
   <div id="editor" class="hidden"></div>
 
-  <!-- Bite reticle: flashes on a hit, harder on a kill. -->
+  <!-- Bite reticle: flashes on a hit, harder on a kill. The bar under the text is
+       the TARGET's remaining health — see showBiteInfo() in src/hud.js. -->
   <div id="crosshair" class="hidden"></div>
-  <div id="biteInfo"></div>
+  <div id="biteInfo"><span id="biteText"></span><div id="biteBar" class="hidden"><i></i></div></div>
 
   <!-- Boost stamina ring — sits off the shark's left flank. Only up while Shift
        is held; the fill fraction is the --p custom property, written from hud.js. -->
   <div id="stamina" class="hidden"></div>
+
+  <!-- Health bar — floats over the shark's head, positioned in SCREEN space from
+       the projected world point (see world.js). Only up for a couple of seconds
+       after your health actually moves. -->
+  <div id="health"><i></i></div>
+
+  <!-- Damage vignette: a red pulse on every hit, held while health is critical. -->
+  <div id="damage"></div>
+
+  <!-- Death banner. Up while the shark drifts, faded as it wakes in the shallows. -->
+  <div id="death"></div>
 
   <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> free cursor</div>
 
@@ -60,10 +74,13 @@
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> swim &amp; turn</div>
           <div><kbd>Space</kbd> rise &nbsp; <kbd>Ctrl</kbd> dive</div>
           <div><kbd>Shift</kbd> boost &nbsp; <kbd>Left click</kbd> bite</div>
-          <div><kbd>E</kbd> menu — your shark, in 3D, and its stats</div>
+          <div><kbd>E</kbd> menu — your shark in 3D, its stats, and the <b>+</b> buttons that spend points</div>
+          <div>Everything you eat pays points: a fry 1, a lunker 5, a dolphin 14, a whale 70. Spend them on health, attack, attack speed or stamina — you cannot afford them all</div>
           <div>Boost burns the green ring beside you — empty it and you swim at cruise until it refills</div>
           <div>Move the <b>mouse</b> to look · collect the glowing orbs</div>
           <div>Hunt to grow: fish go down in one bite, a dolphin takes 3, a whale 10</div>
+          <div>Eating heals you — the bar over your head shows your health whenever it moves</div>
+          <div><b>Whales fight back.</b> Bite one and it turns on you — it rears back before every strike, so swim clear and come back in. Break off for 10s and it forgets you</div>
           <div>The <b>NEAREST</b> readout points you at the nearest big animal</div>
           <div><kbd>F3</kbd> performance readout &nbsp; <kbd>F4</kbd> placement editor</div>
         </div>

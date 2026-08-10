@@ -9,6 +9,7 @@ import { habitatY } from './levels.js';
 import { resolveBody } from './collision.js';
 import { tickMixer } from './mixers.js';
 import { registerPrey } from './prey.js';
+import { armCombat, provoke, calm, isHostile, updateAggression } from './combat/aggression.js';
 
 // ============================================================
 //  WILDLIFE  — animated skinned rigs that roam on their own.
@@ -22,6 +23,12 @@ import { registerPrey } from './prey.js';
 //  waypoint, turn toward it at a capped yaw rate, bank into the turn, swim. Big
 //  animals get a low `turn` so they arc through the water; small ones get a high
 //  one so they dart.
+//
+//  A species with a `combat` block in config fights back once bitten. This file
+//  does not know what that means: src/combat/aggression.js decides where such an
+//  animal wants to be and hands back three multipliers, and the steering below is
+//  the same code either way — same collision, same clearances, same roam bound. A
+//  hostile whale is a whale with a different target and a heavier throttle.
 // ============================================================
 
 const creatures = [];
@@ -156,7 +163,15 @@ function spawn(proto, spec) {
     // frames instead of being whatever the last creature in the loop wrote.
     fwd: new THREE.Vector3(0, 0, -1),
     alive: true,
+    // Written by combat/aggression.js, read by the steering below. Defaulted here
+    // as well as in armCombat() so every creature carries them, which is what lets
+    // the steering multiply unconditionally instead of branching per species.
+    speedMul: 1,
+    turnMul: 1,
+    pitchBias: 0,
   };
+
+  if (spec.combat) armCombat(c);
 
   newWaypoint(c, rng);      // where it starts IS world generation — seeded
   pivot.position.copy(c.target);
@@ -173,6 +188,11 @@ function spawn(proto, spec) {
     action.setLoop(THREE.LoopRepeat, Infinity);
     action.timeScale = spec.rate * (0.9 + rng() * 0.2);
     action.play();
+    // Kept only for the fighters: a whale that rears back and then rams at 3.4x
+    // speed has to beat its tail like it means it, and the clip rate is the only
+    // thing that sells the effort. Stored per animal because the jitter above means
+    // no two of them share a base rate.
+    if (spec.combat) { c.action = action; c.baseRate = action.timeScale; }
     action.time = rng() * clip.duration;   // stagger, or they beat in lockstep
   } else {
     console.warn(`${spec.model}: no animation clips found`);
@@ -191,7 +211,12 @@ function spawn(proto, spec) {
     bites: spec.bites,
     points: spec.points,
     track: true,        // wildlife shows up in the HUD's NEAREST bearing
-    hide() { c.alive = false; pivot.visible = false; },
+    // The whole trigger for a neutral animal turning on you: it was bitten and it
+    // survived. Species without a `combat` block ignore this (provoke() early-outs),
+    // which is every species but the whale.
+    onHit(damage, killed) { if (!killed) provoke(c); },
+    danger() { return isHostile(c); },
+    hide() { c.alive = false; pivot.visible = false; calm(c); },
     show() { c.alive = true; pivot.visible = true; reseat(c); },
   });
 
@@ -230,7 +255,7 @@ export function createCreatures(models) {
   return creatures;
 }
 
-export function updateCreatures(dt, sharkPos) {
+export function updateCreatures(dt, sharkPos, sharkGirth) {
   lastShark.copy(sharkPos);      // for reseat(), when one of these respawns
 
   for (const c of creatures) {
@@ -241,9 +266,19 @@ export function updateCreatures(dt, sharkPos) {
     c.retarget -= dt;
     if (c.retarget <= 0) newWaypoint(c, live);
 
+    // A fighting animal picks its own target (the shark) and its own throttle.
+    // FIRST, so the dwell timer above cannot overwrite the chase and the flee
+    // below cannot argue with it.
+    if (spec.combat) updateAggression(c, dt, sharkPos, sharkGirth);
+
     // Shy species break off and put distance between themselves and the shark.
     // The whale (shy: 0) keeps its course — nothing down here worries it.
-    if (spec.shy && pos.distanceTo(sharkPos) < 22) {
+    //
+    // Skipped outright while hostile. No species is currently both shy and a
+    // fighter, but this block runs after the chase above and writes the same
+    // `target`, so without the guard the day one is, it would flee and attack on
+    // alternate frames and do neither.
+    if (spec.shy && !isHostile(c) && pos.distanceTo(sharkPos) < 22) {
       away.copy(pos).sub(sharkPos);
       if (away.lengthSq() < 1e-6) away.set(1, 0, 0);
       away.normalize().multiplyScalar(34 * spec.shy);
@@ -264,7 +299,7 @@ export function updateCreatures(dt, sharkPos) {
     let yawRate = 0;
     if (flat > 0.5) {
       const wantYaw = Math.atan2(-tmp.x, -tmp.z);     // model forward is -Z
-      const step = spec.turn * dt;
+      const step = spec.turn * c.turnMul * dt;
       const applied = THREE.MathUtils.clamp(angleDelta(c.yaw, wantYaw), -step, step);
       c.yaw += applied;
       yawRate = applied / dt;
@@ -281,11 +316,15 @@ export function updateCreatures(dt, sharkPos) {
     c.pitch = THREE.MathUtils.lerp(c.pitch, wantPitch, 1 - Math.pow(0.15, dt));
 
     // --- move along the new heading ---
+    // pitchBias is the whale's rear-back before it strikes (combat/aggression.js):
+    // nose up, the whole animal visibly loading. It is added to the heading rather
+    // than to the model's rotation on purpose — the tell has to move the animal, or
+    // a shark watching the body instead of the pose gets no warning at all.
     pivot.rotation.y = c.yaw;
-    pivot.rotation.x = c.pitch;
+    pivot.rotation.x = c.pitch + c.pitchBias;
     body.rotation.z = c.roll;
     c.fwd.set(0, 0, -1).applyQuaternion(pivot.quaternion);
-    pos.addScaledVector(c.fwd, c.speed * dt);
+    pos.addScaledVector(c.fwd, c.speed * c.speedMul * dt);
 
     // --- bounds: off the dunes, under the surface, inside the roam circle ---
     clampRadius(pos, ROAM_LIMIT);
@@ -312,8 +351,20 @@ export function updateCreatures(dt, sharkPos) {
       pos.y = Math.max(pos.y, floorAt(pos.x, pos.z, c.clearance));
     }
 
+    // Tail beat follows the throttle, for the fighters only — see the note where
+    // `action` is stored. Nothing else ever changes speedMul, so nothing else pays
+    // for this.
+    if (c.action) c.action.timeScale = c.baseRate * c.speedMul;
+
     // Distance-gated (mixers.js). halfLength is passed as slack so the whale —
     // 21 units nose to tail — is judged by how close its BODY is, not its pivot.
     tickMixer(c, dt, pos, c.halfLength);
   }
+}
+
+// Every fighting animal forgets the player. Called by world.js when the shark
+// respawns: an animal that killed you does not get to still be angry at a shark
+// that woke up 280 m away in another basin.
+export function calmCreatures() {
+  for (const c of creatures) calm(c);
 }

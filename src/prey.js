@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BITE } from './config/config.js';
+import { BITE, PLAYER } from './config/config.js';
 
 // ============================================================
 //  PREY  — every animal the shark can bite, in one flat registry.
@@ -12,16 +12,34 @@ import { BITE } from './config/config.js';
 //    radius       body girth, added to the bite reach
 //    axis / half  optional: for an elongated animal, a live forward vector and
 //                 half its length, which turns the hit volume into a CAPSULE
-//    bites        snaps to eat it, points  growth credited when it dies
+//    bites        snaps to eat it AT THE BASE BITE DAMAGE — see HIT POINTS below;
+//                 points  what eating it pays (growth + the upgrade currency)
 //    hide / show  the owning module's callbacks — it decides what "gone" means
 //                 for its own kind of animal, and where one comes back
 //    track        show up in the HUD's NEAREST readout. Set by creatures.js only:
 //                 shoaling fish are everywhere and pointing at one is noise
+//    onHit        optional: told (damage, killed) after every landed bite. This is
+//                 how a neutral animal learns it has been attacked — see
+//                 src/combat/aggression.js
+//    danger       optional: returns true while this animal is hostile, so the HUD's
+//                 NEAREST row can mark it
+//
+//  ---- HIT POINTS ----
+//  An animal's health is measured in DAMAGE, not in snaps, so that an upgraded shark
+//  kills faster and so the whale can have a real health bar to fight down. But
+//  `bites` stays the number every config row is authored in, and the bridge is one
+//  multiplication: maxHp = bites x PLAYER.attack. A ten-bite whale is 240 hp and an
+//  unupgraded shark, hitting for 24, still kills it in ten.
+//
+//  Note the BASE attack, deliberately, and never the upgraded biteDamage(): the whale
+//  is 240 hp forever, and what an Attack level buys is fewer bites to get through it.
+//  Scale prey hp with the player's damage and the upgrade cancels itself out.
 //
 //  Cost: nothing per frame except a countdown over the animals currently dead
 //  (usually none, at most a couple of dozen). The hit test runs on a CLICK, over
 //  ~90 records, which is not worth a spatial index — the whole scan is a few
-//  microseconds and happens at most 2.5 times a second.
+//  microseconds and happens at most 1.25 times a second (3.3 with attack speed fully
+//  upgraded, which is still nothing).
 // ============================================================
 
 const prey = [];        // every registered animal, alive or not
@@ -34,7 +52,8 @@ export const preyStats = { points: 0, eaten: 0 };
 const probe = new THREE.Vector3();
 
 export function registerPrey(entry) {
-  entry.hp = entry.bites;
+  entry.maxHp = entry.bites * PLAYER.attack;
+  entry.hp = entry.maxHp;
   entry.alive = true;
   entry.timer = 0;
   prey.push(entry);
@@ -53,15 +72,25 @@ export function addPoints(n) {
 // and there is no radius that is both.
 function spineDistance(e, p) {
   if (!e.half) return p.distanceTo(e.pos);
-  probe.copy(p).sub(e.pos);
-  const t = THREE.MathUtils.clamp(probe.dot(e.axis), -e.half, e.half);
-  probe.copy(e.pos).addScaledVector(e.axis, t);
+  return spineDistanceTo(e.pos, e.axis, e.half, p);
+}
+
+// The same measurement, taken against a capsule described directly rather than
+// against a prey record. Exported because the whale needs it for its OWN strike
+// (src/combat/aggression.js): a whale defends itself by throwing twenty metres of
+// animal around, so "how far is the shark from its body" is the question there
+// too, and there is no sense in two versions of this arithmetic.
+export function spineDistanceTo(pos, axis, half, p) {
+  probe.copy(p).sub(pos);
+  const t = THREE.MathUtils.clamp(probe.dot(axis), -half, half);
+  probe.copy(pos).addScaledVector(axis, t);
   return p.distanceTo(probe);
 }
 
-// One snap of the jaws. Returns null on a miss, otherwise what was hit and how
-// it's doing. `mouth` is a point at the nose; `forward` the shark's heading.
-export function tryBite(mouth, forward, reach) {
+// One snap of the jaws, worth `damage` hit points. Returns null on a miss,
+// otherwise what was hit and how it's doing. `mouth` is a point at the nose;
+// `forward` the shark's heading.
+export function tryBite(mouth, forward, reach, damage) {
   let best = null, bestD = Infinity;
 
   for (const e of prey) {
@@ -81,9 +110,10 @@ export function tryBite(mouth, forward, reach) {
 
   if (!best) return null;
 
-  best.hp--;
+  best.hp -= damage;
   const killed = best.hp <= 0;
   if (killed) {
+    best.hp = 0;
     best.alive = false;
     best.hide();
     best.timer = BITE.respawn;
@@ -91,7 +121,13 @@ export function tryBite(mouth, forward, reach) {
     preyStats.points += best.points;
     preyStats.eaten++;
   }
-  return { name: best.name, taken: best.bites - Math.max(best.hp, 0), of: best.bites, killed };
+  // AFTER the kill bookkeeping, so an animal that fights back is told the outcome
+  // and not just the damage: a whale that died has nothing left to be angry about.
+  best.onHit?.(damage, killed);
+
+  // `points` rides along because eating heals (COMBAT.healPerPoint) and the caller
+  // is the only place that knows both halves of a bite.
+  return { name: best.name, hp: best.hp, maxHp: best.maxHp, points: best.points, killed };
 }
 
 // ---- TRACKING --------------------------------------------------------------
@@ -101,7 +137,7 @@ export function tryBite(mouth, forward, reach) {
 // random walk. This is what the HUD's NEAREST row reads.
 //
 // Filled into a shared object rather than returned fresh: this runs every frame.
-const nearest = { name: '', dist: 0, pos: null };
+const nearest = { name: '', dist: 0, pos: null, hostile: false };
 
 export function nearestTracked(from) {
   let best = null, bestD = Infinity;
@@ -116,6 +152,9 @@ export function nearestTracked(from) {
   nearest.name = best.name;
   nearest.dist = bestD;
   nearest.pos = best.pos;
+  // Whether this animal is currently angry at you — the HUD marks the row with a ⚠.
+  // Cheap enough to ask every frame: it is one flag read behind a callback.
+  nearest.hostile = best.danger ? best.danger() : false;
   return nearest;
 }
 
@@ -126,7 +165,7 @@ export function updatePrey(dt) {
     const e = dead[i];
     e.timer -= dt;
     if (e.timer > 0) continue;
-    e.hp = e.bites;
+    e.hp = e.maxHp;
     e.alive = true;
     e.show();
     dead.splice(i, 1);

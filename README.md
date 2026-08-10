@@ -90,8 +90,12 @@ shark-game/
 │   ├── creatures.js  # roaming animated wildlife (whale, dolphins, anglerfish)
 │   ├── orbs.js       # collectibles — also bonus growth points
 │   ├── prey.js       # registry of biteable animals: hp, hit volume, respawn
-│   ├── bite.js       # the attack: cooldown, lunge, hit resolution, feedback
+│   ├── upgrades.js   # points earned/spent + every live player stat (Docs/systems/progression.md)
 │   ├── shark.js      # rig, handling, swim clip, growth, chase camera
+│   ├── combat/       # the fight (Docs/systems/attack-and-health.md)
+│   │   ├── bite.js       # the attack: cooldown, lunge, damage, feedback
+│   │   ├── health.js     # the shark's health: damage, healing, death, respawn
+│   │   └── aggression.js # what a neutral animal does once you attack it
 │   ├── input.js      # keyboard + mouse-look + the bite click, as axes
 │   ├── hud.js        # the HUD — the only module that touches the HUD's DOM
 │   ├── menu/         # the E menu (Docs/systems/menu.md)
@@ -113,8 +117,15 @@ readable place.
 The leaf services (`prey`, `hud`, `audio`, `particles`, `collision`, `mixers`) are
 the exception, and deliberately so: they hold no simulation state of their own, so
 importing one is just calling a function. `fish` and `creatures` hand their animals
-to `prey` at spawn and never talk to it again; `bite` is the only module that knows
-biting exists, and it pulls in whatever it needs to make one happen.
+to `prey` at spawn and never talk to it again; `combat/bite` is the only module that
+knows biting exists, and it pulls in whatever it needs to make one happen.
+
+`combat/` follows the same rule one level down. `combat/health` holds the shark's
+health pool and knows nothing about rigs, terrain or creatures — `world` registers
+what "wake at the sanctuary" means. `combat/aggression` owns a hostile animal's
+state and hands `creatures` three multipliers, so `creatures` stays steering and
+animation and a hostile whale runs through exactly the same collision and bounds as
+a calm one.
 
 ## Tweaking
 

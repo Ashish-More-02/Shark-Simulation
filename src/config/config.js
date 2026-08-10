@@ -120,7 +120,10 @@ export const MODELS = {
 //   turn   : max yaw rate, rad/s — big animals arc, small ones dart
 //   shy    : how hard it veers off when the shark closes in (0 = ignores you)
 //   glow   : { material, color, intensity } — material name must match EXACTLY
-//   bites  : snaps to eat it (prey.js);  points : growth, read against SHARK.growthFull
+//   bites  : snaps to eat it (prey.js);  points : what eating it pays — see UPGRADES
+//   combat : this species FIGHTS BACK once bitten. Absent = it never does, which is
+//            every species but the whale. See COMBAT below and
+//            Docs/systems/attack-and-health.md.
 export const CREATURES = [
   {
     model: "whale",
@@ -138,6 +141,42 @@ export const CREATURES = [
     name: "Whale",
     bites: 10,
     points: 70,
+
+    // ---- THE ONE NEUTRAL MOB (Docs/systems/attack-and-health.md) ----
+    // Its hp is NOT here: prey.js derives it as bites x PLAYER.attack = 240, so a
+    // starting shark still kills a whale in the ten bites it always took. This
+    // block is the temper, not the body.
+    //
+    // Read the three time values together — commit at 9 m, rear back for 0.75 s,
+    // then ram for 0.55 s and connect inside 7 m. 0.75 s of warning is 9.2 m of
+    // travel at the shark's cruise speed against a 7 m strike, which is what makes
+    // EVERY hit dodgeable with no upgrade and no precision. That inequality is the
+    // one thing in this block that is not a free tuning choice — everything else
+    // here is a feel dial, and the first pass was tuned far too slow.
+    combat: {
+      attack: 18, // damage per landed strike — six of them kill a fresh shark
+      cooldown: 3.0, // seconds from one commit to the next
+      commit: 9, // body-surface distance at which it decides to strike...
+      reach: 7, // ...and the distance the ram actually connects at, so it can miss
+      windup: 0.75, // the tell: it slows and rears before every strike
+      lunge: 0.55, // the ram itself. One commitment, not a tracking beam.
+      windupMul: 0.55, // speed while loading — a load, not a dead stop
+      lungeMul: 4.4, // 10.6 m/s. Still under the shark's 12.2 cruise, on purpose.
+      chaseMul: 2.6, // 6.2 m/s while hunting you. It follows; it never catches you.
+      turnMul: 2.2, // 0.62 rad/s — a 180 takes 5 s. You out-turn it, always.
+      rear: -0.3, // pitch bias while winding up, radians: nose up, whole body loads
+      // How far it follows you. Inside this it chases; past it, `forget` starts
+      // counting, and coming back inside resets that clock in full.
+      //
+      // Halved from 70 to 35, which puts it INSIDE the ~50 m the fog lets you see:
+      // the whale now breaks off while it is still in plain sight, so disengaging
+      // is something you watch happen rather than something you infer from the ⚠
+      // going out. Note it is measured pivot-to-pivot on a 21 m animal, so 35 m
+      // from the pivot is only ~25 m from its nose. If this ever wants to be "gives
+      // up sooner" rather than "gives up closer", `forget` is the number for that.
+      leash: 35,
+      forget: 10, // seconds outside the leash before it is a whale again
+    },
   },
   {
     model: "dolphin",
@@ -215,7 +254,16 @@ export const SHARK = {
   // (shark.js) — collider, floor clearance, camera offset, bite reach.
   maxScale: 2.1, // 6.0 x 2.1 = 12.6 units, against the whale's 21
   camGrowth: 0, // how much of the growth the camera follows. 0 = growth is visible
-  growthFull: 400, // points for maxScale; clearing the reef once is ~348
+  // Points for maxScale. Was 400 — which is roughly ONE clearing of the reef, so the
+  // shark hit its adult size inside a single session and growth was over before it
+  // meant anything. Six times that made size a long arc across many hunts instead.
+  //
+  // Then the fish classes stopped all being worth 1 point (FISH.classes), which
+  // inflated a full clear by roughly 40% — so this went up by the same 40%, to hold
+  // the arc exactly where it was tuned. Growth reads a LIFETIME point total that
+  // buying upgrades never spends (src/upgrades.js), so the currency and the body
+  // cannot fight over the same number.
+  growthFull: 3400,
   growthLag: 1.2, // seconds for the scale to catch up — cosmetic damping
 };
 
@@ -230,7 +278,18 @@ export const STAMINA = {
 // Biting. One sphere-vs-body query per click against the prey registry
 // (prey.js) — no per-frame cost, which is why the reach can be generous.
 export const BITE = {
-  cooldown: 0.4, // seconds between snaps
+  // Seconds between snaps — the base of the Attack speed stat, and the only one on
+  // the sheet where LOWER is better, which is why the menu shows its reciprocal
+  // (bites per second) instead. Read the live value through biteCooldown()
+  // (upgrades.js), never from here.
+  //
+  // Doubled from 0.4 to NERF the unupgraded shark. A jaw that resets in four tenths
+  // of a second is free damage: nothing in the ocean can punish it, so there was no
+  // fight to have and nothing for an upgrade to sell you. At 0.8 s a whale takes
+  // eight seconds of unbroken biting, which is two or three of its strikes taken —
+  // so the first fight is genuinely hard, and buying attack speed buys the snappiness
+  // back. Level 4 restores the old 0.4 s and level 5 goes past it.
+  cooldown: 0.8,
   snap: 0.22, // head-snap animation length
   lunge: 3.2, // forward impulse, so a bite is also a pounce
   mouthAhead: 2.9, // puts the bite sphere at the nose; scales with the shark
@@ -239,6 +298,44 @@ export const BITE = {
   gape: 1.8, // ...except inside this distance, where angle stops mattering
   respawn: 60, // seconds until an eaten animal returns, well away from the shark
   orbPoints: 6, // orbs are pure bonus growth: no bites, no chase
+};
+
+// ---- COMBAT (src/combat/, Docs/systems/attack-and-health.md) ----------------
+// The shark's side of the fight. Its two headline numbers are NOT here — max
+// health is PLAYER.health and bite damage is PLAYER.attack — because those are
+// what the stat sheet upgrades, and a capability belongs in one place. This block
+// is the rules around them.
+//
+// NOTHING HERE GROWS ON ITS OWN. Bite damage is a flat PLAYER.attack, max health a
+// flat PLAYER.health, boost a flat STAMINA.boostSeconds. Eating makes the shark
+// BIGGER and pays points; it does not quietly hand out damage or hit points on the
+// side. Those are the upgrade system's to sell, from the menu, for points the player
+// chooses to spend — and a stat that also creeps up by itself can never be priced.
+//
+// What still scales with the shark's size is GEOMETRY, not numbers: jaw reach and
+// the hull the whale aims at. A 12.6 m animal with a 6 m animal's reach could not
+// bite past its own nose.
+export const COMBAT = {
+  hitFlash: 0.22, // seconds the shark's whole body flashes white on being hit
+  hitFlashGain: 2.4, // ...and how much emissive is added at the peak of it
+  // How long the bar over the shark's head stays up after its health MOVES, either
+  // way. It is not a permanent gauge: a health bar you can always see is a health
+  // bar you stop reading, and this one is here to tell you something just happened.
+  barShowFor: 2.5,
+  hurtGrace: 0.3, // immunity after a hit, so two whales can't stack on one frame
+  regenDelay: 8, // seconds without damage before health starts coming back...
+  regenRate: 0.7, // ...at this, per second. Deliberately worse than one dolphin:
+  //                  a floor that stops one bad fight being a dead end, not a heal.
+  // Eating IS the repair kit — roadmap §4 rules out a hunger clock, so food has to
+  // be worth something without ever being urgent. Paid against the same `points`
+  // that drive growth: a whale restores 42 hp, a dolphin 8, a reef fish 0.6.
+  healPerPoint: 0.6,
+  deathHold: 2.2, // seconds you drift dead before waking in the shallows
+  // The head bar is read by COLOUR first and length second: green, then amber below
+  // warnHealth, then red below lowHealth — which is also where the damage vignette
+  // stops flashing per hit and simply stays up.
+  warnHealth: 0.6,
+  lowHealth: 0.3,
 };
 
 // Shoaling fish. Each school picks one size class (weighted), then every member
@@ -294,11 +391,14 @@ export const FISH = {
   //   spread : school volume the members hold station in
   //   speed  : [base, extra] cruise speed — both halves move together
   //   weight : relative odds of a school drawing this class
+  // `points` per class, because a 5-unit lunker and a 0.6-unit fry being worth the
+  // same was the one flat part of the reward table — and points are a currency now
+  // (src/upgrades.js), so what a thing is worth has to read off its size.
   classes: [
-    { scale: [0.6, 1.0], count: [6, 5], spread: [4.5, 2.0, 4.5], speed: [5.0, 2.8], weight: 2 }, // fry
-    { scale: [1.0, 1.6], count: [8, 6], spread: [7.0, 3.2, 7.0], speed: [4.8, 3.0], weight: 4 }, // mid-water
-    { scale: [2.1, 3.0], count: [4, 4], spread: [9.0, 4.2, 9.0], speed: [4.2, 2.6], weight: 4 }, // large
-    { scale: [3.8, 5.0], count: [1, 2], spread: [11, 5.5, 11], speed: [3.6, 2.2], weight: 3 }, // lunkers
+    { scale: [0.6, 1.0], count: [6, 5], spread: [4.5, 2.0, 4.5], speed: [5.0, 2.8], weight: 2, points: 1 }, // fry
+    { scale: [1.0, 1.6], count: [8, 6], spread: [7.0, 3.2, 7.0], speed: [4.8, 3.0], weight: 4, points: 2 }, // mid-water
+    { scale: [2.1, 3.0], count: [4, 4], spread: [9.0, 4.2, 9.0], speed: [4.2, 2.6], weight: 4, points: 3 }, // large
+    { scale: [3.8, 5.0], count: [1, 2], spread: [11, 5.5, 11], speed: [3.6, 2.2], weight: 3, points: 5 }, // lunkers
   ],
 
   // Named species — real skinned rigs playing their own clip, at three draw
@@ -319,6 +419,7 @@ export const FISH = {
       band: [0.06, 0.28],
       floorClear: 1.8,
       name: "Blue fish",
+      points: 2,
     },
     {
       model: "clownFish",
@@ -332,6 +433,7 @@ export const FISH = {
       band: [0.02, 0.18],
       floorClear: 1.6,
       name: "Clownfish",
+      points: 2,
     },
     {
       model: "fish2",
@@ -343,6 +445,7 @@ export const FISH = {
       clip: "Armature|Swim",
       rate: 2.0,
       name: "Reef fish",
+      points: 2,
     },
   ],
 };
@@ -354,29 +457,88 @@ export const ORBS = { count: 12, collectRadius: 2.2 };
 export const MPH = 2.23694;
 
 // ---- PLAYER PROGRESSION (the E menu) ---------------------------------------
-// What the shark IS, not what it is doing. Every row of the stat sheet reads
-// "what this shark can do now / what it could do fully upgraded", so the empty
-// part of each bar is the upgrade path — the growth that is still on the table.
+// What the shark IS at level 0, before it has bought anything. Every row of the
+// stat sheet reads "what this shark can do now / what it could do fully upgraded",
+// so the empty part of each bar is the upgrade path — what is still on the table.
 // Moment-to-moment values (how fast you are going right now, how much boost is
 // left in the tank) are the HUD's job and are deliberately not here.
 //
-// The `now` half of stamina and speed is NOT in this block: those are read off
-// STAMINA.boostSeconds and SHARK.boostSpeed, the numbers the game actually runs
-// on, so retuning handling moves the stat sheet with it and the two can never
-// disagree. Everything else here, and every `Cap`, is a placeholder for the
-// upgrade system that will own them.
+// These are BASE values, and the live ones are base + level x step (src/upgrades.js).
+// Nothing in the world raises them on its own: they move when the player spends
+// points from the menu and at no other time, which is the only way an upgrade can be
+// worth a price. See UPGRADES below and Docs/systems/progression.md.
+//
+// The two handling stats are not restated here at all — stamina's base is
+// STAMINA.boostSeconds and speed's is SHARK.boostSpeed, the numbers the game
+// actually runs on, so retuning handling moves the stat sheet with it.
 export const PLAYER = {
-  health: 100,
-  healthCap: 500, // hp
-  attack: 24,
-  attackCap: 100, // damage per bite, once bites do damage
+  health: 100, // max hp. Six unanswered whale strikes.
+  attack: 24, // damage per bite. Ten bites to a whale.
   // Pressure the shark can take, in atmospheres. The deepest floor in the world
   // is ~9.2 atm, so a starting 14 means every level is currently survivable with
   // room to spare — which is what you want while there is nothing to survive.
+  // No upgrade row: pressure damage does not exist yet, and selling a stat that
+  // does nothing is the one thing an upgrade screen must never do.
   pressure: 14,
   pressureCap: 60,
-  staminaCap: 20, // seconds of boost fully upgraded (now: STAMINA.boostSeconds)
-  speedCap: 60, // mph fully upgraded (now: SHARK.boostSpeed, 34 mph)
+};
+
+// ---- UPGRADES (src/upgrades.js, Docs/systems/progression.md) -----------------
+// Eating pays points. Points buy levels. A level is a fixed step on one stat, and
+// the cost RISES with the level you are buying, so the interesting decision is
+// never "can I afford everything" — it is "which of these three do I need next".
+//
+//   step   what one level adds, in the stat's own unit
+//   levels how many are for sale. The stat sheet's `max` is base + step x levels,
+//          DERIVED rather than authored, so the far end of every bar is a number
+//          you can actually reach — the panel can never advertise a ceiling that
+//          no amount of spending arrives at.
+//   cost   points for the NEXT level = cost x (level + 1). So the first level of
+//          health is 50 and the eighth is 400, and the whole stat is 1800.
+//
+// The three costs are deliberately unequal, and that ordering IS the design:
+// survivability is cheap and incremental, the bite is the expensive lever because
+// it changes how long every fight in the game takes, and stamina sits between them.
+// A full clearing of the reef pays roughly 600 points, so one hunt buys two or three
+// early levels — enough to feel, nowhere near enough to buy the row.
+//
+// WHY THESE THREE AND NOT FIVE. Speed is missing on purpose: raising boostSpeed
+// alone breaks the boostAccelMul invariant documented in SHARK, and roadmap §6 puts
+// speed and pressure under the *Insight* currency (from discovery) rather than
+// Growth (from hunting). Pressure is missing because nothing in the world reads it.
+// Both rows still render — captioned as such — and adding either later is one row
+// here plus one getter.
+export const UPGRADES = {
+  // 100 -> 500 hp. The whale hits for 18, so level 1 alone is nearly three more
+  // strikes survived, and that is the cheapest thing on the sheet for a reason:
+  // dying is what stops a player exploring, and this is the row that answers it.
+  health: { step: 50, levels: 8, cost: 50, unit: 'hp' },
+
+  // 24 -> 80 dmg. Read it in BITES TO KILL A WHALE (240 hp): 10, 8, 6, 5, 5, 4, 4, 3.
+  // Every level is a fight that is measurably shorter, which is also less time spent
+  // inside a hostile whale's reach — the real reason this is the priciest row.
+  attack: { step: 8, levels: 7, cost: 100, unit: 'dmg' },
+
+  // Attack speed, and the one INVERTED stat on the sheet: `step` comes off the bite
+  // cooldown, a clean tenth of a second a level, so 0.8 s -> 0.3 s across five levels
+  // and the jaws end up 2.7x faster. 1.25 bites a second up to 3.3. The menu shows it
+  // as bites per second, because "lower is better" cannot be drawn on a bar that
+  // fills as you improve.
+  //
+  // Priced the SAME as attack power, because the two rows buy the same thing —
+  // damage per second — by different means, and they multiply: a whale is 8 seconds
+  // of unbroken biting at level 0, 3 s with this row maxed, 2.4 s with attack maxed,
+  // and 0.9 s with both. That compounding is the only interaction on this sheet, and
+  // it is what makes committing to a build pay more than spreading levels evenly.
+  attackSpeed: { step: 0.1, levels: 5, cost: 100, unit: 'bites/s' },
+
+  // 6 -> 20 seconds of boost, +2 a level, as asked for. `refillStep` is the honest
+  // half of it: a 20-second tank that still refilled in 3.5 s would make stamina
+  // strictly better than everything else on the sheet, so refilling a bigger tank
+  // takes longer too — just not proportionally. At level 0 a rest second buys 1.7
+  // boost seconds; fully upgraded it buys 2.6. So the upgrade lengthens the sprint
+  // AND improves the rate, without ever making boost free.
+  stamina: { step: 2, refillStep: 0.6, levels: 7, cost: 70, unit: 's of boost' },
 };
 
 // In-game placement editor (F4). The brush cycles `models`, ordered big-to-small
@@ -461,4 +623,13 @@ export const AUDIO = {
   splash: { url: "assets/audio/shark_drop_into_ocean.wav", volume: 0.36 },
   bite: { url: "assets/audio/shark_bite.mp3", volume: 0.45, rate: [0.92, 1.08] },
   eat: { url: "assets/audio/orb-collect.mp3", volume: 0.17, rate: 0.75 },
+
+  // ---- COMBAT ----
+  // Both are existing assets played at a rate they were not recorded at, rather
+  // than two new files: the bite pitched down two thirds is a dull impact, and the
+  // fish-flee whoosh at half speed is a big animal shifting its weight. Neither is
+  // final — a whale strike wants its own recording — but a telegraph you can hear
+  // is worth more than one waiting on an asset.
+  hurt: { url: "assets/audio/shark_bite.mp3", volume: 0.5, rate: [0.5, 0.62] },
+  whaleStrike: { url: "assets/audio/fish-flee.mp3", volume: 0.55, rate: [0.45, 0.55] },
 };

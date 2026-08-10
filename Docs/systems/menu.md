@@ -1,8 +1,8 @@
 # System: the in-game menu (E)
 
-> Status: **built, basic.** Shell in [`src/menu/menu.js`](../../src/menu/menu.js),
-> pages in [`src/menu/pages/`](../../src/menu/pages/), dummy stat values in
-> `config.js` `PLAYER`.
+> Status: **built.** Shell in [`src/menu/menu.js`](../../src/menu/menu.js), pages in
+> [`src/menu/pages/`](../../src/menu/pages/), stat bases in `config.js` `PLAYER` and
+> the levels they are bought in in [`src/upgrades.js`](../../src/upgrades.js).
 
 One overlay that holds everything the HUD cannot: the shark itself, its numbers,
 and — later — the map, the missions and the quest log.
@@ -35,13 +35,13 @@ the game's second screen, and pausing is just what makes reading it fair.
 │ ┌──────────────────────────────────────────────┐ │
 │ │  Shark │ Map │ Missions │ Quests             │ │  ← shell: tab strip
 │ └──────────────────────────────────────────────┘ │
-│ ┌───────────────────┐ ┌──────────────────────┐   │
-│ │                   │ │  STATS               │   │
-│ │   3D shark        │ │  health   ▓▓▓▓▓▓░░   │   │  ← the PAGE owns this
-│ │   (drag to spin)  │ │  speed    ▓▓▓▓░░░░   │   │
-│ │                   │ │  attack   ▓▓░░░░░░   │   │
-│ │                   │ │  pressure ▓▓▓▓▓▓▓░   │   │
-│ └───────────────────┘ └──────────────────────┘   │
+│ ┌───────────────────┐ ┌──────────────────────────┐│
+│ │                   │ │  STATS         1240 pts  ││
+│ │   3D shark        │ │  health   ▓▓▓▓░░  [+ 50] ││ ← the PAGE owns this
+│ │   (drag to spin)  │ │  stamina  ▓▓░░░░  [+ 70] ││
+│ │                   │ │  attack   ▓░░░░░  [+ 90] ││ ← greyed if you can't pay
+│ │                   │ │  pressure ▓▓▓▓▓░         ││
+│ └───────────────────┘ └──────────────────────────┘│
 └──────────────────────────────────────────────────┘
 ```
 
@@ -134,13 +134,15 @@ and the browser serves the GLB from cache. Boot time is untouched.
 That is the design of the whole panel, not a formatting choice. A row is
 
 ```js
-{ key, label, now, max, unit, decimals, note, dummy }
+{ key, label, now, max, unit, decimals, note, dummy, locked,
+  buy: { level, levels, cost, afford, maxed } | null }
 ```
 
 `now` is what this shark can do **today**, `max` is what it could do with every
 upgrade bought, both as plain numbers in the row's own unit. The panel prints
 **`6 / 20 s of boost`** and fills the bar to `now / max`. So the empty part of
-every bar is the **upgrade path** — the growth still on the table.
+every bar is the **upgrade path** — and since the shop exists, the price of the next
+step of it is on the same line.
 
 **These are not live readings, deliberately.** A stat sheet describes the
 *animal*, not the moment. "Six seconds of boost capacity out of a possible twenty"
@@ -160,29 +162,41 @@ That division is the point of having two surfaces at all:
 Nothing here hands out a percentage either. "30% stamina" does not tell you
 whether that is six seconds or two.
 
-### The five rows
+### The six rows
 
-| Stat | now | fully upgraded | Real? |
+| Stat | now | fully upgraded | For sale? |
 |---|---|---|---|
-| **Health** | `PLAYER.health` — 100 hp | `PLAYER.healthCap` — 500 | ✗ placeholder |
-| **Stamina** | `STAMINA.boostSeconds` — 6 s | `PLAYER.staminaCap` — 20 s | ✓ real / ✗ ceiling |
-| **Top speed** | `SHARK.boostSpeed` — 34 mph | `PLAYER.speedCap` — 60 mph | ✓ real / ✗ ceiling |
-| **Attack power** | `PLAYER.attack` — 24 dmg | `PLAYER.attackCap` — 100 | ✗ placeholder |
+| **Health** | `maxHealth()` — 100 hp at Lv 0 | 500 hp at Lv 8 | ✓ **+50 hp**, 50 pts |
+| **Stamina** | `boostSeconds()` — 6 s at Lv 0 | 20 s at Lv 7 | ✓ **+2 s**, 70 pts |
+| **Top speed** | `SHARK.boostSpeed` — 34 mph | — | ✗ locked, and captioned why |
+| **Attack power** | `biteDamage()` — 24 dmg at Lv 0 | 80 dmg at Lv 7 | ✓ **+8 dmg**, 100 pts |
+| **Attack speed** | `attackRate()` — 1.25 bites/s at Lv 0 | 3.3 bites/s at Lv 5 | ✓ **−100 ms**, 100 pts |
 | **Pressure** | `PLAYER.pressure` — 14 atm | `PLAYER.pressureCap` — 60 | ✗ placeholder |
 
-The menu is honest about which halves are made up — placeholder rows are dimmed
-and captioned as such, because a dummy stat that looks live is a bug you find
+**This panel is also the shop** — see
+[progression.md](progression.md) for the currency, the prices and what each level
+does to the world. Four rows carry a `+` button and a `Lv 3/8` pill; the two that do
+not carry a caption saying why, because an inert control with no explanation reads as
+a broken one. **Attack speed is shown as bites per second** rather than as its
+underlying cooldown: it is the one stat that improves by a number going DOWN, and a bar
+cannot fill toward a smaller value. The menu is honest about which halves are made up: placeholder rows are
+dimmed and captioned as such, because a dummy stat that looks live is a bug you find
 months later.
 
-Two rows have a **real** `now`, and they get it from the numbers the game actually
-runs on rather than restating them: stamina reads `STAMINA.boostSeconds` and top
-speed reads `SHARK.boostSpeed`. Retune the handling and the stat sheet moves with
-it — the two can never drift apart, which is the failure this arrangement exists
-to prevent. Every ceiling, and the other three rows, are placeholders waiting on
-an upgrade system to own them.
+Every real `now` is read from the getter the game itself runs on — `maxHealth()`,
+`biteDamage()`, `boostSeconds()` — rather than restated here, so the sheet and the
+simulation can never drift apart. That is the failure this arrangement exists to
+prevent.
 
-A row whose `now` has reached its `max` is drawn in gold and reads as finished.
-None are yet.
+**And none of them move on their own.** Attack power briefly scaled with the shark's
+growth and that was reverted: a `now` that drifts upward by itself is a shop with no
+prices. Every number on this page changes when the player spends points on this page,
+and at no other time.
+
+**The ceilings are derived, not authored.** `max` is `base + step × levels`, computed
+from what the shop actually stocks, so "the empty part of every bar is the upgrade
+path" is literally true rather than a hope. A full bar is drawn in gold and means a
+finished stat — never an aspirational number nobody can reach.
 
 **Stamina** is the tank *behind* the green ring. The ring shows how much of it is
 left and is only up while `Shift` is held; this row shows how big it is, which is
@@ -201,14 +215,18 @@ against 9.2 the whole world is survivable with room to spare, which is what you
 want while there is nothing to survive. Drop it under 9.2 the day pressure damage
 exists and the reef floor becomes somewhere you have to earn.
 
-**Health and attack** read from the same `PLAYER` block in `config.js` and are
-labelled as placeholders in the panel itself. When a damage system lands it
-replaces those rows in `stats.js` and nothing else moves — that is the whole
-reason they are routed through a config block instead of typed into the markup.
+**Health and attack** were placeholders until
+[attack-and-health.md](attack-and-health.md) landed, and became purchasable when
+[progression.md](progression.md) did. Both transitions cost exactly what they were
+supposed to: rows in `stats.js` changed and nothing else moved. That was the whole
+reason for routing them through a config block instead of typing them into the markup.
 
-The list renders **once per open**, not on a timer. A capability cannot change
-while you are looking at it — nothing grants an upgrade from behind a paused menu
-— and the day something does, it re-renders the list itself.
+The list renders **once per open, and again after every purchase.** This doc used to
+say once per open, full stop, on the grounds that *"a capability cannot change while
+you are looking at it — and the day something does, it re-renders the list itself."*
+That day arrived: the `+` buttons are exactly that something, and they call the
+re-render, as promised. It rebuilds the sheet whole rather than patching a row — five
+rows behind a paused game, once per click.
 
 ---
 
@@ -243,10 +261,10 @@ Tab order is array order.
 src/menu/
   menu.js            shell: overlay, tabs, E key, pause/input handoff
   preview.js         the rotatable 3D model viewport (own renderer)
-  stats.js           what a stat IS: label, value, bar fraction, source
+  stats.js           what a stat IS: label, value, bar fraction, price, source
   pages/
     index.js         the page registry — array order is tab order
-    shark.js         page 1: preview + stats, the two-column layout
+    shark.js         page 1: preview + stats + the buy buttons, two columns
     stub.js          makes the empty Map/Missions/Quests tabs
 ```
 
@@ -272,7 +290,11 @@ stands: **two DOM owners, `hud.js` and `src/menu/`, and no third.**
   handling comes with the first page anyone actually navigates.
 - **Map, Missions and Quests are empty stubs.** They exist to prove the page
   contract and to make the tab strip real.
-- **Health and attack do nothing.** See above; they are labelled as such on screen.
+- **Pressure and top speed have no `+` button.** Both are captioned on screen with
+  the reason — see [progression.md](progression.md). Health, attack and stamina used
+  to be in this line and no longer are.
+- **A purchase cannot be undone**, and there is no confirmation. `resetUpgrades()`
+  exists in `upgrades.js` and nothing calls it.
 - **The preview has no zoom.** Drag rotates; distance is fit to the model.
 - **Opening the menu mid-bite** freezes the snap pose until you close it. Harmless,
   and it goes away if the pause is ever replaced by a live background.

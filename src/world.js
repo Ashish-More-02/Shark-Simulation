@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import { MODELS, SHARK, ORBS } from './config/config.js';
 import { LEVELS, PROPS, PROPS_PLAIN } from './config/levels/index.js';
-import { createBackdrop, createLights, renderer, scene, camera } from './core.js';
+import { createBackdrop, createLights, renderer, scene, camera, canvas } from './core.js';
 import { loadAll } from './loader.js';
 import { createSeabed } from './terrain.js';
 import { createWater } from './water.js';
@@ -8,13 +9,15 @@ import { createGodRays } from './godrays.js';
 import { createParticles, emitWake, updateWake } from './particles.js';
 import { scatterAll, updateProps } from './props.js';
 import { createSchools, updateSchools } from './fish.js';
-import { createCreatures, updateCreatures } from './creatures.js';
+import { createCreatures, updateCreatures, calmCreatures } from './creatures.js';
 import { createOrbs, updateOrbs } from './orbs.js';
-import { createShark, updateShark, sharkState, depthMetres, sharkLength } from './shark.js';
-import { updateBite } from './bite.js';
+import { createShark, updateShark, respawnShark, sharkState, depthMetres, sharkLength } from './shark.js';
+import { updateBite } from './combat/bite.js';
+import { health, updateHealth, setRespawnHandler } from './combat/health.js';
 import { initEditor, updateEditor } from './editor.js';
 import { preyStats, nearestTracked } from './prey.js';
-import { setDepth, setSpeed, setEaten, setSize, setTrack, setStamina } from './hud.js';
+import { bank } from './upgrades.js';
+import { setDepth, setSpeed, setEaten, setSize, setTrack, setStamina, setHealth, setPoints } from './hud.js';
 import { updateSwim } from './audio.js';
 
 // ============================================================
@@ -23,6 +26,45 @@ import { updateSwim } from './audio.js';
 // ============================================================
 
 let ready = false;
+
+// ---- THE HEALTH BAR'S SCREEN POSITION --------------------------------------
+// The bar lives over the shark's head, so somebody has to turn a world point into
+// pixels. It happens HERE rather than in hud.js for the same reason the NEAREST
+// bearing does: hud.js stays the module that only writes to the DOM, and this is the
+// one file that already holds the camera, the shark and the frame order.
+//
+// Costs one matrix multiply, and only on the frames the bar is actually up — which
+// is a couple of seconds after a hit and nothing at all the rest of the time.
+const headPoint = new THREE.Vector3();
+
+function projectHead(pos, scale, out) {
+  // Above the pivot and a little toward the nose. The pivot is the middle of the
+  // body (the loader recentres every model), so `up` alone would park the bar over
+  // the shark's back; the forward term walks it up to the head. Both scale with the
+  // animal, or the bar sinks into a full-grown shark's dorsal fin.
+  headPoint.copy(pos)
+    .addScaledVector(sharkState.forward, 1.4 * scale);
+  headPoint.y += 2.5 * scale;
+
+  // project() reads camera.matrixWorldInverse, and the only thing that refreshes it
+  // is renderer.render() — which has not run yet this frame. Without this the bar is
+  // positioned against where the camera was LAST frame, so it lags behind the shark
+  // by a few pixels whenever you are moving, which is exactly when it is up.
+  camera.updateMatrixWorld();
+  headPoint.project(camera);      // -> normalized device coords, -1..1
+  // z > 1 is behind the camera. The chase camera is always behind the shark so this
+  // should never fire, but a projected point behind the eye comes back mirrored, and
+  // a bar that teleports to the wrong side of the screen is worse than no bar.
+  if (headPoint.z > 1) return false;
+
+  // clientWidth/Height, not innerWidth: the canvas is the thing the projection is
+  // in, and the two only agree while it happens to fill the window.
+  out.x = (headPoint.x * 0.5 + 0.5) * canvas.clientWidth;
+  out.y = (-headPoint.y * 0.5 + 0.5) * canvas.clientHeight;
+  return true;
+}
+
+const headScreen = { x: 0, y: 0 };
 
 export async function buildWorld() {
   // static scenery first — none of it depends on the models
@@ -37,6 +79,15 @@ export async function buildWorld() {
 
   createShark(models.shark);
   initEditor(models);      // F4 placement editor — see src/editor.js
+
+  // What "wake at the sanctuary" MEANS. combat/health.js owns the death clock, the
+  // banner and the number; it deliberately knows nothing about rigs, cameras or a
+  // basin full of angry whales, so the two things a respawn actually has to do are
+  // registered from here — the one file whose job is knowing every subsystem.
+  setRespawnHandler(() => {
+    respawnShark();
+    calmCreatures();
+  });
 
   // ---- POPULATE EACH LEVEL --------------------------------------------------
   // Level 1 is the shallows: a bare plain with a thin prop table, half the shoals
@@ -85,8 +136,16 @@ export function updateWorld(dt, t) {
   // prop chunks are in front of the camera and near enough to matter.
   updateProps();
   updateSchools(dt, t, pos);
-  updateCreatures(dt, pos);
+  // The shark's body radius goes with it: a hostile whale measures its strike
+  // against the shark's HULL, not its pivot, so a fully grown 12.6 m animal is
+  // easier to catch than a fresh one. Same scaling every other length gets.
+  updateCreatures(dt, pos, SHARK.bodyRadius * sharkState.scale);
   updateOrbs(dt, t, pos);
+
+  // AFTER anything that can deal damage, so a hit and its consequences land on the
+  // same frame, and the respawn teleport happens after the shark has finished
+  // moving rather than being overwritten by it.
+  updateHealth(dt);
 
   const speed = Math.abs(sharkState.speed);
   if (speed > SHARK.wakeAtSpeed) emitWake(pos, sharkState.forward);
@@ -100,8 +159,14 @@ export function updateWorld(dt, t) {
   setDepth(depthMetres());
   setSpeed(speed);
   setEaten(preyStats.eaten);
+  setPoints(bank());
   setSize(sharkLength());
   setStamina(sharkState.stamina, sharkState.boostHeld, sharkState.staminaSpent, sharkState.scale);
+
+  // The bar's own timer decides whether it is up (combat/health.js); the projection
+  // only runs if it is, and can still veto it for a point behind the camera.
+  const showBar = health.barFor > 0 && projectHead(pos, sharkState.scale, headScreen);
+  setHealth(health.hp, health.max, sharkState.scale, headScreen.x, headScreen.y, showBar);
 
   // Last, so the ghost sits on the shark's FINAL position this frame rather than
   // trailing it by one.
@@ -117,6 +182,10 @@ export function updateWorld(dt, t) {
   } else {
     const dx = track.pos.x - pos.x, dz = track.pos.z - pos.z;
     const fx = sharkState.forward.x, fz = sharkState.forward.z;
-    setTrack(track.name, Math.round(track.dist), Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz));
+    setTrack(
+      track.name, Math.round(track.dist),
+      Math.atan2(dx * -fz + dz * fx, dx * fx + dz * fz),
+      track.hostile,
+    );
   }
 }

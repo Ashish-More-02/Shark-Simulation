@@ -203,8 +203,10 @@ fight itself.
 
 One currency means one optimal playstyle.
 
-- **Growth — from hunting.** Size, bite damage, health, jaw reach. Already built:
-  points to scale, damped over 1.2 s. Keep it as is.
+- **Growth — from hunting.** Size, bite damage, health, jaw reach. **Built** —
+  [systems/progression.md](systems/progression.md): every animal pays points, and
+  health, attack and stamina are bought a level at a time from the E menu. Size and
+  jaw reach still come free with the points, as the body; everything else is priced.
 - **Insight — from discovery.** Pressure rating, sonar range, stamina, speed, and
   every story fragment. Earned by logging creatures, finding wrecks, recovering
   artefacts.
@@ -269,6 +271,11 @@ nearly ready.
 Health and damage, the sanctuary-respawn death loop, a save file, pause and
 settings screens. Add **Observe** and a first Codex.
 
+> **Started.** Health, bite damage and a first sanctuary respawn are in, along with
+> the whale as one neutral mob that fights back —
+> [systems/attack-and-health.md](systems/attack-and-health.md). Still open here: the
+> save file, the settings screen, Observe and the Codex.
+
 None of this is content. It is the frame every later stage hangs on, and until
 losing is possible nothing else can be evaluated.
 
@@ -279,6 +286,10 @@ losing is possible nothing else can be evaluated.
 Echolocate, points of interest, wrecks and artefacts, the Insight currency, the
 upgrade screen. At the end of this the game has a reason to keep playing that is
 not "eat more fish".
+
+> **The upgrade screen landed early**, funded by Growth rather than Insight —
+> [systems/progression.md](systems/progression.md). What is left here is Insight
+> itself and the rows only it should buy: pressure rating, sonar range, speed.
 
 *Ships as: a free web demo — build the audience here.*
 
@@ -400,8 +411,12 @@ undecided. This roadmap stays a summary and links out.
 
 - [systems/world-levels.md](systems/world-levels.md) — levels, streaming, the chart
 - [systems/menu.md](systems/menu.md) — the E menu: shell, pages, 3D preview, stats
-- Planned: `echolocation.md`, `dispositions.md`, `progression.md`,
-  `death-and-respawn.md`, `codex.md`, `story-spine.md`
+- [systems/attack-and-health.md](systems/attack-and-health.md) — bite damage, the
+  shark's health, and the whale as the first mob that fights back
+- [systems/progression.md](systems/progression.md) — points from eating, and the
+  upgrade levels they buy: what each one costs and what it does to the world
+- Planned: `echolocation.md`, `dispositions.md`, `death-and-respawn.md`,
+  `codex.md`, `story-spine.md`
 
 ---
 

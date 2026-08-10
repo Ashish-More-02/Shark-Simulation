@@ -31,6 +31,8 @@ html, body {
 }
 .hud-row { display: flex; justify-content: space-between; gap: 22px; font-size: 15px; }
 .hud-row .label { color: #6fb7e6; font-size: 11px; font-weight: 700; letter-spacing: 2px; align-self: center; }
+/* The NEAREST row, when the animal it is pointing at is currently hostile. */
+#track.hostile { color: #ff8a7a; font-weight: 700; }
 
 /* ---- Bite reticle ----
    A bite is over in a fifth of a second and the target is usually a small fish
@@ -87,6 +89,10 @@ html, body {
   letter-spacing: 1.5px;
   color: #ffe3a0;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  /* Needed since the health bar moved in below the text: the bar has a fixed width,
+     so a short line like "Fish eaten" is narrower than the box it now sits in and
+     would hang off to the left without this. */
+  text-align: center;
   pointer-events: none;
   user-select: none;
   opacity: 0;
@@ -94,6 +100,24 @@ html, body {
   z-index: 4;
 }
 #biteInfo.show { opacity: 1; transition: none; }
+
+/* The TARGET's remaining health, under the text. Narrow and short on purpose: it
+   is a wound you glance at mid-fight, not a boss bar, and the number above it is
+   the precise reading. Warm amber rather than red — red belongs to your OWN
+   health, and two red bars on one screen mean neither of them reads. */
+#biteBar {
+  width: 96px;
+  height: 3px;
+  margin: 5px auto 0;
+  background: rgba(4, 22, 38, 0.75);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#biteBar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #d99b2a, #ffd479);
+}
 
 /* ---- Boost stamina ring ----------------------------------------------------
    A ring, not a bar, and parked next to the shark rather than up in the HUD
@@ -173,6 +197,133 @@ html, body {
    green. Without a state change here an empty ring and a full one differ only by
    an arc you cannot see at a glance, and Shift just feels broken. */
 #stamina.spent { --fill: #ff7a5c; }
+
+/* ---- Health bar ------------------------------------------------------------
+   Over the shark's head, in SCREEN space: world.js projects a point above the
+   animal through the camera every frame it is up and writes the result into --x
+   and --y. So the bar belongs to the shark rather than to a corner of the screen,
+   which is the whole reason to pay for a projection — your eyes are already on your
+   own animal in a fight, and a gauge somewhere else is a gauge you don't read.
+
+   It is only up for COMBAT.barShowFor seconds after your health MOVES. A permanent
+   bar over the player's head is one you stop seeing after ten minutes and it clutters
+   every screenshot of a game whose whole subject is looking at things; a bar that
+   appears when something happened is impossible to miss precisely because it is not
+   always there. It fades rather than snapping, so a hit that lands while it is on
+   screen just re-arms the timer without a flicker.
+
+   The width scales with the shark: a bar sized for a 6 m animal looks pinned to a
+   12.6 m one. Only halfway, though — this is still a HUD element, and the ratio the
+   eye is checking is the FILL, not the length. */
+#health {
+  --p: 1;                            /* 0..1 fill, written from hud.js */
+  --x: 50%;                          /* projected screen position of the head */
+  --y: 50%;
+  --s: 1;                            /* shark scale, 1..SHARK.maxScale */
+  --fill: #46e08a;
+  position: fixed;
+  left: var(--x);
+  top: var(--y);
+  width: calc(10vh * (1 + (var(--s) - 1) * 0.5));
+  min-width: 44px;
+  height: 1.1vh;
+  min-height: 6px;
+  transform: translate(-50%, -50%);
+  background: rgba(4, 18, 30, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 3px;
+  /* No padding, and the fill is clipped instead. Everything here is border-box (the
+     reset at the top of this file), so a padded 6px-tall bar on a short window would
+     have nothing left for the fill after the border and the padding had taken their
+     4px — the gauge would vanish exactly where the window was smallest. */
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  user-select: none;
+  z-index: 4;
+}
+#health.on { opacity: 1; }
+#health i {
+  display: block;
+  width: calc(var(--p) * 100%);
+  height: 100%;
+  background: var(--fill);
+  border-radius: 2px;
+  /* The fill EASES to its new width. A bar that jumps tells you your health
+     changed; a bar that slides tells you by how much, which is the reading you
+     actually want off a bar rather than off the HUD's number. */
+  transition: width 0.25s ease-out;
+}
+/* Green -> amber -> red, because a bar over your own head is read by COLOUR at a
+   glance and only then by length. The thresholds are hud.js's. */
+#health.warn { --fill: #ffc44d; }
+#health.low  { --fill: #ff3b3b; }
+#health.low i { transition: width 0.12s ease-out; }   /* dropping fast: keep up */
+
+/* ---- Damage vignette -------------------------------------------------------
+   Red in from the edges, nothing in the middle — the one shape that can say "you
+   are being hurt" without covering the thing hurting you. `hit` is one pulse per
+   landed strike; `critical` is a slow breathing hold under COMBAT.lowHealth, so
+   near-death is a state you are in rather than an event that happened.
+
+   A radial-gradient on a full-screen fixed div: one composited layer, no layout,
+   and it costs nothing while opacity is 0. */
+#damage {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center,
+              rgba(255, 20, 20, 0) 42%, rgba(190, 12, 12, 0.55) 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+#damage.critical { opacity: 0.5; animation: dmg-breathe 2.2s ease-in-out infinite; }
+#damage.hit      { animation: dmg-hit 0.52s ease-out; }
+/* `hit` last and unqualified so it wins the cascade over `critical` — taking a
+   hit at 8 hp has to still read as a hit. */
+#damage.critical.hit { animation: dmg-hit 0.52s ease-out; }
+
+@keyframes dmg-hit {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes dmg-breathe {
+  0%, 100% { opacity: 0.34; }
+  50%      { opacity: 0.62; }
+}
+
+/* ---- Death banner ---------------------------------------------------------- */
+#death {
+  position: fixed;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+  user-select: none;
+  z-index: 7;
+}
+#death.show { opacity: 1; }
+#death b {
+  font-size: 34px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: #ff8a7a;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.9);
+}
+#death span {
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #cfe9fb;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+}
 
 /* ---- Perf readout (F3) ---- */
 /* ---- Placement editor (F4) ----
@@ -438,7 +589,15 @@ kbd {
   border-radius: 14px;
   overflow: hidden;
 }
+/* Flex rather than a plain block, so a card title can carry something on its right
+   (the points bank) without it being a float — a floated pill is taller than this
+   12px line box and would hang down over the first row of the card. Titles with a
+   single text child are unaffected. */
 .menu-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 2.5px;
@@ -471,7 +630,22 @@ kbd {
   align-items: baseline;
   margin-bottom: 7px;
 }
-.stat-name { font-size: 14px; color: #eaf6ff; letter-spacing: 0.5px; }
+/* The name takes the slack, so the value and the + button sit together on the
+   right and the eye can run straight down the prices. */
+.stat-name { font-size: 14px; color: #eaf6ff; letter-spacing: 0.5px; margin-right: auto; }
+/* "Lv 3/8" beside the label. Levels bought out of levels for sale — the one number
+   that says how far into a stat you already are without doing arithmetic on the bar. */
+.stat-lv {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #6fb7e6;
+  background: rgba(120, 200, 255, 0.12);
+  border-radius: 4px;
+  vertical-align: 1px;
+}
 /* "4.3 / 6.0 s of boost" — the current value carries the weight, the capacity
    after it is quieter. Both are on screen because the bar means nothing without
    the number it is a fraction OF. */
@@ -510,6 +684,78 @@ kbd {
    than leaving it looking like any other nearly-full row. */
 .stat.maxed .stat-value { color: #ffd479; }
 .stat.maxed .stat-bar i { background: linear-gradient(90deg, #d99b2a, #ffd479); }
+/* The second, quieter caption under a row that has nothing for sale — why it has
+   no + button. An inert control with no explanation reads as a broken one. */
+.stat-note.dim { color: #3d6479; font-style: italic; margin-top: 3px; }
+
+/* ---- Buying a level -------------------------------------------------------
+   One + per upgradable row, on the row it changes. Three states, and the middle
+   one is the whole system: affordable, too expensive, or finished.
+
+   The unaffordable state keeps its PRICE on screen rather than hiding it. That is
+   the difference between a button that is broken and a button that is a goal — you
+   are meant to read "90" at 40 points and go and find something worth eating. */
+.stat-buy {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-left: 14px;
+  padding: 4px 10px;
+  min-width: 54px;
+  justify-content: center;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: #04121f;
+  background: linear-gradient(180deg, #7fe0ff, #34a9e0);
+  border: 1px solid rgba(190, 230, 255, 0.5);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.stat-buy em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.stat-buy:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(52, 169, 224, 0.45); }
+.stat-buy:active:not(:disabled) { transform: translateY(0); }
+/* Grey, and unclickable. Not hidden and not dimmed to invisibility: this is the
+   state the row spends most of its life in, and it still has to be readable. */
+.stat-buy:disabled {
+  color: #5f92b3;
+  background: rgba(120, 200, 255, 0.08);
+  border-color: rgba(120, 200, 255, 0.18);
+  cursor: default;
+}
+/* Bought out. A span rather than a button, so there is nothing left to press. */
+.stat-buy.maxed {
+  color: #ffd479;
+  background: rgba(217, 155, 42, 0.14);
+  border-color: rgba(255, 212, 121, 0.35);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  cursor: default;
+}
+
+/* The bank, in the Stats card's own title. It belongs there rather than in the
+   menu's header: points are what this page is for, and the number you are about to
+   spend should be in the same glance as the prices you are weighing it against. */
+.stat-bank {
+  flex: none;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #ffd479;
+  background: rgba(217, 155, 42, 0.14);
+  border: 1px solid rgba(255, 212, 121, 0.3);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
 
 .menu-empty { display: flex; flex-direction: column; gap: 10px; }
 .menu-empty p { font-size: 14px; color: #a9cde5; line-height: 1.6; }
