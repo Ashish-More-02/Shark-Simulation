@@ -91,9 +91,11 @@ export async function buildWorld() {
 
   // ---- POPULATE EACH LEVEL --------------------------------------------------
   // Level 1 is the shallows: a bare plain with a thin prop table, half the shoals
-  // and a third of the orbs. Level 2 is the reef exactly as it always was, and
-  // it keeps every creature — the whales, dolphins and anglerfish only live
+  // and a third of the orbs. Level 2 is the reef exactly as it always was, and it
+  // keeps nearly every creature — the whales, dolphins and anglerfish only live
   // deeper, which is the first thing the descent teaches without a word of text.
+  // The manta ray is the single exception, and it says which basins it wants in its
+  // own config row (CREATURES `levels`) rather than being placed from here.
   //
   // Both levels are built up front and stay resident. That is affordable at two
   // small basins and is NOT the long-term plan: see Docs/systems/world-levels.md
@@ -106,8 +108,11 @@ export async function buildWorld() {
 
   scatterAll(PROPS, models, reef);
   createSchools(models, reef);
-  createCreatures(models);
   createOrbs(reef);
+
+  // Wildlife is built once for the WHOLE world, not per level: a species row is the
+  // unit of authorship and each one names the basins it lives in. See creatures.js.
+  createCreatures(models);
 
   // Compile every program NOW, while the start screen is still up (§6). Otherwise
   // each material compiles the first time it is drawn, and the opening seconds of
@@ -139,7 +144,12 @@ export function updateWorld(dt, t) {
   // The shark's body radius goes with it: a hostile whale measures its strike
   // against the shark's HULL, not its pivot, so a fully grown 12.6 m animal is
   // easier to catch than a fresh one. Same scaling every other length gets.
-  updateCreatures(dt, pos, SHARK.bodyRadius * sharkState.scale);
+  //
+  // The scale itself follows for a second reason — a fighter's `commit`/`reach` are
+  // authored for a 6 m shark and sized against its CURRENT jaw reach, or the strike
+  // range of an animal that never grows falls behind a shark that does until it can no
+  // longer be reached at all. See the note in combat/aggression.js.
+  updateCreatures(dt, pos, SHARK.bodyRadius * sharkState.scale, sharkState.scale);
   updateOrbs(dt, t, pos);
 
   // AFTER anything that can deal damage, so a hit and its consequences land on the

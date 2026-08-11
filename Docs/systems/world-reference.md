@@ -306,10 +306,38 @@ the same height at every depth, in every level.
 | Blue fish / clownfish | 2.0 – 9.2 / 0.7 – 5.9 |
 | Whale / dolphin | 13.9 – 25.7 / 18.2 – 27.1 |
 | Anglerfish | 0.7 – 7.3 |
+| Manta ray | 2.0 – 13.9 (plus surface trips on the reef — below) |
 
 The upper storey (`FISH.highSchools`) fills water *above* the habitat band, and
 only exists in levels with `headroom() > FISH.highMinRoom`. The shallows have 9
 units of headroom, below the threshold of 12, so they get none.
+
+### Two species leave their band on a timer
+
+`CREATURES[].surface` — `{ every: [base, jitter], trip, depth, climbPitch }` — makes a
+species abandon the *depth* of its waypoint (keeping its heading), climb to `depth`
+metres under the surface, patrol up there for the rest of `trip`, and glide back down to
+its band. One function, `surfaceTrip()` in `creatures.js`; two very different animals:
+
+| | why | numbers |
+|---|---|---|
+| Dolphin | it is a mammal and has to breathe | `every` 30–42 s, `trip` 9 s, `depth` 4, `climbPitch` 0.95 |
+| Manta ray (**reef only**) | it feeds on what drifts near the top | `every` 32–44 s, `trip` 38 s, `depth` 5, `climbPitch` 1.0 |
+
+The manta's numbers are set so the reef population splits its time **evenly between the
+top of the column and the reef floor**, and that split is arithmetic rather than a
+percentage anywhere in the code: from the middle of its band to 5 m under the surface is
+a 69 m climb, 13 s up at `climbPitch` 1.0 against 23 s back down at the shared 0.5 rad
+limit. `trip` 38 s therefore buys 25 s at the surface and `every` ≈ 38 s leaves 15 s on
+the reef — 38 s in each half of a 76-second cycle. Raise `trip` for a longer visit up
+top and keep `every` near it to hold the split; `depth` decides how close to the
+waterline it gets, bounded by the animal's own ceiling clamp (`surface − clearance − 0.4`).
+
+The three reef mantas stagger their first trip from `live` at spawn, so at any moment
+roughly one is up top, one is in transit and one is on the reef: the *species* reads as
+doing both at once while each animal only ever does one. A chase overrides a trip (the
+flee block runs after it) and a **fight cancels it outright**, so nothing about this
+happens while the player is involved.
 
 ### Ranges
 
@@ -319,7 +347,8 @@ units of headroom, below the threshold of 12, so they get none.
 | `FISH.roam` | shoal range as a fraction of the level's `play` |
 | `FISH.species[].only` | restrict a species to one level id |
 | `createSchools(models, level, density)` | `density` in `world.js` thins a level (shallows use 0.5) |
-| `CREATURES[].count / ring / band` | wildlife — **reef only**, `ROAM_LIMIT` is the reef's `play − 10` |
+| `CREATURES[].ring / band` | wildlife's swim radius and depth band, measured from its own basin's centre and clamped to that basin's `play − 10` (`roamFor()`) |
+| `CREATURES[].levels` | which basins a species lives in, by level **id**, with a count each — `[{level:1,count:2},{level:2,count:3}]`. Absent = the reef with `count` of them, which is every species but the manta ray. Any other field of the row may be overridden per basin. |
 | `ORBS.count` | per level; `world.js` gives the shallows a third |
 
 ---

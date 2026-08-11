@@ -14,6 +14,10 @@ import { BITE, PLAYER } from './config/config.js';
 //                 half its length, which turns the hit volume into a CAPSULE
 //    bites        snaps to eat it AT THE BASE BITE DAMAGE — see HIT POINTS below;
 //                 points  what eating it pays (growth + the upgrade currency)
+//    respawn      optional seconds until it comes back, overriding BITE.respawn. A
+//                 species that IS a level's population wants to return sooner than
+//                 the world default (CREATURES `respawn`); one whale a minute is a
+//                 rate limit on income and belongs on the whale, not on everything
 //    hide / show  the owning module's callbacks — it decides what "gone" means
 //                 for its own kind of animal, and where one comes back
 //    track        show up in the HUD's NEAREST readout. Set by creatures.js only:
@@ -76,10 +80,14 @@ function spineDistance(e, p) {
 }
 
 // The same measurement, taken against a capsule described directly rather than
-// against a prey record. Exported because the whale needs it for its OWN strike
-// (src/combat/aggression.js): a whale defends itself by throwing twenty metres of
-// animal around, so "how far is the shark from its body" is the question there
-// too, and there is no sense in two versions of this arithmetic.
+// against a prey record.
+//
+// This is the BITE's geometry: symmetric, capped at both ends, the whole animal, because
+// every inch of a whale is edible. combat/aggression.js deliberately does NOT use it any
+// more — a strike is not a bite. It measures against the animal's front section only and
+// drops the rear cap, so a tail cannot deal damage; see strikeDistance() there. The two
+// looked like the same arithmetic and were not, and that mistake is what let a whale ram
+// you with a fluke that never moved.
 export function spineDistanceTo(pos, axis, half, p) {
   probe.copy(p).sub(pos);
   const t = THREE.MathUtils.clamp(probe.dot(axis), -half, half);
@@ -116,7 +124,7 @@ export function tryBite(mouth, forward, reach, damage) {
     best.hp = 0;
     best.alive = false;
     best.hide();
-    best.timer = BITE.respawn;
+    best.timer = best.respawn ?? BITE.respawn;
     dead.push(best);
     preyStats.points += best.points;
     preyStats.eaten++;

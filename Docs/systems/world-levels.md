@@ -578,10 +578,19 @@ each of them.
 - **Both levels are resident at all times.** Affordable now because level 1 is
   nearly empty, and prop chunk distance-culling already hides the far basin. It
   does not extend past three or four levels.
-- **Level 1 has no creatures** — the whales, dolphins and anglerfish are level 2
-  only. That is deliberate ("the big animals live deeper" is the first thing the
-  descent should teach) but it means `nearestTracked` points at a whale 280 m away
-  through a mountain while you are in the shallows.
+- **Level 1 has almost no creatures** — the whales, dolphins and anglerfish are level 2
+  only, and that stays deliberate ("the big animals live deeper" is the first thing the
+  descent should teach). The **manta ray** is the one exception, two of them, added
+  because the shallows needed one animal with a temper to teach the neutral contract
+  somewhere cheap (see [attack-and-health.md](attack-and-health.md)). It is also what
+  stops `nearestTracked` pointing at a whale 280 m away through a mountain for the whole
+  of level 1 — though it still does that when both mantas are eaten.
+- **A species says which basins it lives in, not the level.** `CREATURES[].levels` is a
+  list of `{ level: <id>, count }` (plus any per-basin overrides), and `createCreatures()`
+  is called once for the whole world rather than per level like `createSchools()` and
+  `createOrbs()`. Each individual carries its own `home` centre and roam radius, so two
+  animals off the same config row can be 280 m apart. Spawn streams are named
+  `creatures:<levelId>:<model>`, so retuning one population leaves the other alone.
 
 ---
 

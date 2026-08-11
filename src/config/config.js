@@ -88,6 +88,22 @@ export const MODELS = {
   dolphin: { url: "assets/Dolphin.glb", targetSize: 5.0, rotY: Math.PI, anchorBottom: false, twoSided: true },
   whale: { url: "assets/whale.glb", targetSize: 21, rotY: Math.PI, anchorBottom: false, twoSided: true },
   angler: { url: "assets/anglerfish.glb", targetSize: 2.4, rotY: Math.PI, anchorBottom: false, twoSided: true },
+  // targetSize is the LONGEST dimension, and on this rig that is nose to TAIL TIP:
+  // the model measures 11.7 long against an 8.4 wingspan, most of the difference
+  // being a thin whip tail. So 8.4 is a 6.0 m WINGSPAN — not a 6.0 m animal. Retune
+  // the wingspan through this number and nothing else; every length the animal has
+  // (clearance, hit capsule, collision reach) comes off the measured box. The one
+  // exception is CREATURES `girth`, which a flat animal cannot take from its own
+  // bounding box and which has to be moved BY HAND when this changes.
+  //
+  // Raised 50% from 5.6 (a 4.0 m wingspan). At 6.0 m across, the manta is now wider
+  // than the shark is long and the second-largest animal in the ocean — an oceanic
+  // manta rather than a reef one. Note that nothing about the FIGHT moved with it:
+  // 120 hp, 16 damage, and every `commit`/`reach` below is measured from the body
+  // SURFACE, so the bigger animal is reached from further out but is no tougher. If
+  // it now reads as too easy for its presence, `bites` and `combat.attack` are the
+  // two numbers to raise — not this one.
+  manta: { url: "assets/fish_models/manta_ray.glb", targetSize: 8.4, rotY: Math.PI, anchorBottom: false, twoSided: true },
 
   // Seabed flora
   grass: { url: "assets/grass.glb", targetSize: 2.6, rotY: 0, anchorBottom: true },
@@ -112,9 +128,18 @@ export const MODELS = {
 };
 
 // Roaming wildlife — one skinned rig per instance, not instanced, so counts stay
-// small. All of it lives in level 2 (the reef).
+// small. Most of it lives in level 2 (the reef); see `levels` below.
+//   levels : which basins this species lives in, by level ID (not array index),
+//            each with its own count: [{ level: 1, count: 2 }, ...]. Any other
+//            field of this row may be overridden per basin by putting it in that
+//            entry, which is how one species can keep a different band or ring in
+//            the shallows than it does on the reef. ABSENT = the reef, `count` of
+//            them — which is every species here but the manta ray.
+//   count  : how many, when `levels` is absent
 //   band   : [low, high] fraction of the water column, 0 = seabed, 1 = surface
-//   ring   : [inner, outer] radius its waypoints are drawn from, equal-area
+//   ring   : [inner, outer] radius its waypoints are drawn from, equal-area,
+//            measured from ITS OWN basin's centre and clamped to that basin's
+//            roam limit — so one ring works in a 95 m level and a 105 m one
 //   clip   : animation clip name; falls back to the file's first clip
 //   rate   : clip timeScale at cruise speed
 //   turn   : max yaw rate, rad/s — big animals arc, small ones dart
@@ -123,9 +148,25 @@ export const MODELS = {
 //            species can never out-run the shark. Prey that cannot be caught is
 //            scenery — see FISH.sprintCap, which is the same guard for shoals.
 //   glow   : { material, color, intensity } — material name must match EXACTLY
+//   surface: optional { every: [base, jitter], trip, depth, climbPitch } — this species
+//            leaves its band and spends part of its life near the surface, then glides
+//            back down. A dolphin does it to breathe and a manta to feed; the machinery
+//            is one function (surfaceTrip() in creatures.js) and the numbers are the
+//            whole difference. Per-basin, like everything else here: the reef's mantas
+//            have one and the shallows' do not.
+//   girth  : optional body radius, in world units at scale 1, for the bite capsule
+//            and rock collision. Taken from the model's HEIGHT otherwise, which is
+//            right for a round animal and useless for a flat one: a manta ray is
+//            4 m across and 60 cm thick, so its measured girth would be 30 cm and
+//            you could not bite a wing you were sitting on.
+//   respawn: optional override of BITE.respawn, seconds until an eaten one returns
 //   bites  : snaps to eat it (prey.js);  points : what eating it pays — see UPGRADES
 //   combat : this species FIGHTS BACK once bitten. Absent = it never does, which is
-//            every species but the whale. See COMBAT below and
+//            every species but the whale and the manta ray. `commit`/`reach` are
+//            distances from the shark's hull to the animal's body surface; `strikeSpan`
+//            is how much of the animal, from the nose back, can do the hitting; and an
+//            optional `tail` block is a SECOND attack off the other end, measured the
+//            same way backwards from the flukes. See COMBAT below and
 //            Docs/systems/attack-and-health.md.
 export const CREATURES = [
   {
@@ -136,9 +177,28 @@ export const CREATURES = [
     band: [0.42, 0.78],
     ring: [30, 68],
     clip: "Armature|Swim",
-    rate: 0.34,
-    speed: 2.4,
-    turn: 0.28,
+    // ---- FASTER, AND ABLE TO TURN ROUND ----
+    // Raised from speed 2.4 / turn 0.28 because the whale could not defend itself once
+    // its tail stopped being a weapon (`strikeSpan`): at 0.62 rad/s hostile it needed
+    // five seconds to bring its head round, and a shark could simply live behind it and
+    // bite for free. The fluke slap in `combat.tail` is half of the answer and this is
+    // the other half — reorienting has to be something it can plausibly do.
+    //
+    // Everything here stays inside the rule the whole fight is built on: it is SLOWER
+    // THAN YOUR CRUISE in every mode, so leaving always works. See `chaseMul`.
+    //   rate  0.42, not 0.34 — this is metres per tail beat (speed / rate = 7.1 m,
+    //         unchanged), so the beat tracks the new speed instead of the animal
+    //         appearing to glide faster on the same stroke.
+    //   turn  0.36 keeps the calm turn radius at 8.3 m, about what it was: this row is
+    //         about the HOSTILE rate (turnMul), not about how it wanders.
+    rate: 0.42,
+    speed: 3.0,
+    // The ram must stay under the shark's 12.2 m/s cruise, and the per-individual speed
+    // jitter in creatures.js is x0.85–1.15 — so the fastest whale would ram at 3.45 x
+    // lungeMul and blow through that ceiling. This is the same backstop as the dolphin's
+    // and the manta's: 3.2 x 3.8 = 12.16, just under, by design.
+    speedCap: 3.2,
+    turn: 0.36,
     dwell: [10, 8],
     shy: 0,
     name: "Whale",
@@ -156,30 +216,91 @@ export const CREATURES = [
     // capped anyway by BITE.respawn — two whales an minute, and no more.
     points: 150,
 
-    // ---- THE ONE NEUTRAL MOB (Docs/systems/attack-and-health.md) ----
+    // ---- THE FIRST NEUTRAL MOB (Docs/systems/attack-and-health.md) ----
+    // The manta ray below is the second, and it is deliberately the same machine at
+    // a tenth of the scale — read the two blocks side by side.
     // Its hp is NOT here: prey.js derives it from `bites` above. This block is the
     // temper, not the body.
     //
-    // Read the three time values together — commit at 9 m, rear back for 0.75 s,
-    // then ram for 0.55 s and connect inside 7 m. 0.75 s of warning is 9.2 m of
-    // travel at the shark's cruise speed against a 7 m strike, which is what makes
+    // Read the three time values together — commit at 6 m, rear back for 0.75 s,
+    // then ram for 0.55 s and connect inside 4 m. 0.75 s of warning is 9.2 m of
+    // travel at the shark's cruise speed against a 4 m strike, which is what makes
     // EVERY hit dodgeable with no upgrade and no precision. That inequality is the
     // one thing in this block that is not a free tuning choice — everything else
     // here is a feel dial, and the first pass was tuned far too slow.
+    //
+    // One thing to know before touching `commit` or `reach`: both are authored against a
+    // 6 m shark, and a GROWTH STANDOFF is added at use (combat/aggression.js) — up to
+    // +1.93 m at full size, because the closest a growing shark's pivot can get while
+    // biting grows with its jaws. So the inequality above is really
+    // `windup x cruise > reach + standoff`, worst case 9.15 against 5.93. Still ample.
+    //
+    // Note this block now holds TWO attacks. `tail` at the bottom is a fluke slap off
+    // the other end of the animal, and it runs on exactly these fields — read the two
+    // sets side by side, because the differences between them are the whole design.
     combat: {
       // Tripled from 18. At the shark's starting 100 hp that is TWO strikes to kill
       // you, which is what makes the whale a wall rather than a slow-motion vending
       // machine — and it is why Health is the cheapest row on the upgrade sheet.
       attack: 54,
       cooldown: 3.0, // seconds from one commit to the next
-      commit: 9, // body-surface distance at which it decides to strike...
-      reach: 7, // ...and the distance the ram actually connects at, so it can miss
+      // ---- CONTACT RANGE, NOT ARTILLERY RANGE ----
+      // Both halved from 9 and 7, because 7 m of `reach` was hitting sharks that were
+      // plainly nowhere near the animal. Read what the number actually measures
+      // (combat/aggression.js): it is the gap between the shark's HULL and the whale's
+      // BODY SURFACE — both girths are already subtracted — so 7 was seven clear metres
+      // of open water, more than a shark's whole body length, and the ram connected
+      // across it with nothing visibly touching.
+      //
+      // 4 m is contact. It sits INSIDE the ~5.7 m the shark's own jaws work at when it
+      // bites head-on, so the line is now exactly where it should be: hug the whale and
+      // it can hit you, bite at the limit of your reach and drift out and it cannot.
+      // That is the whole point of the change — being hit has to be a consequence of
+      // where you chose to be.
+      //
+      // `commit` comes down with it and keeps a 2 m miss margin: the whale closes ~1 m
+      // during the windup and 5.8 m during the 0.55 s ram, so from 6 m it lands on a
+      // shark that held its ground and misses one that used any part of the 0.75 s
+      // warning to leave. The margin is what makes a miss possible at all — a `commit`
+      // equal to `reach` would be an unmissable hit, and one far outside it (the old 9
+      // against 7) is a whale that lunges at water.
+      commit: 6, // body-surface distance at which it decides to strike...
+      reach: 4, // ...and the distance the ram actually connects at, so it can miss
+      // ---- AND WITH WHICH END OF ITSELF ----
+      // The fraction of its length, measured BACK FROM THE NOSE, that a strike connects
+      // with. Both distances above are measured to this stretch of animal and to nothing
+      // else, so at 0.55 the front 11.5 m of a 21 m whale can hit you and the 9.5 m of
+      // tail behind that cannot.
+      //
+      // It used to be the whole body, and that is the single most-complained-about thing
+      // about this fight: you take 54 damage from a tail that never moved, while looking
+      // at an animal whose head is pointing somewhere else. A ram is a HEAD-FIRST
+      // commitment. 0.55 is head, jaw and the shoulder behind it — the part that is
+      // actually coming at you when it rears and lunges — and it deliberately reaches a
+      // little past the pivot, because a 21 m animal turning into you does lead with its
+      // whole front half.
+      //
+      // The cost is real and it is the good kind: a whale cannot hit what is behind it,
+      // so its tail is now the safe place to bite from until it turns around at
+      // 0.62 rad/s. That is the fight this was always meant to be — the reason `turnMul`
+      // is a number at all — and see the known limits in the doc for the tail slap that
+      // would be the honest answer to sitting there forever.
+      strikeSpan: 0.55,
       windup: 0.75, // the tell: it slows and rears before every strike
       lunge: 0.55, // the ram itself. One commitment, not a tracking beam.
       windupMul: 0.55, // speed while loading — a load, not a dead stop
-      lungeMul: 4.4, // 10.6 m/s. Still under the shark's 12.2 cruise, on purpose.
-      chaseMul: 2.6, // 6.2 m/s while hunting you. It follows; it never catches you.
-      turnMul: 2.2, // 0.62 rad/s — a 180 takes 5 s. You out-turn it, always.
+      lungeMul: 3.8, // 11.4 m/s, and 12.16 on the fastest whale — under your 12.2 cruise
+      // 9.3 m/s, up from 6.2. It is genuinely ON you now rather than trailing, and it is
+      // still under the shark's 12.2 cruise — which is the one line this number must not
+      // cross. Past that the whale stops being "a place you cannot be" and becomes a
+      // pursuer, the shark becomes prey, and disengaging stops being free.
+      chaseMul: 3.1,
+      // 0.79 rad/s, up from 0.62: a 180 takes 4.0 s instead of 5.1. Deliberately NOT
+      // raised to where it can track a circling shark (you orbit at ~0.8 rad/s at 15 m,
+      // and the shark itself turns at 1.6) — you still out-turn it, always. What this
+      // buys is that getting behind a whale is temporary rather than permanent, and the
+      // fluke slap is what makes the seconds you spend back there cost something.
+      turnMul: 2.2,
       rear: -0.3, // pitch bias while winding up, radians: nose up, whole body loads
       // How far it follows you. Inside this it chases; past it, `forget` starts
       // counting, and coming back inside resets that clock in full.
@@ -192,6 +313,75 @@ export const CREATURES = [
       // up sooner" rather than "gives up closer", `forget` is the number for that.
       leash: 35,
       forget: 10, // seconds outside the leash before it is a whale again
+
+      // ---- THE FLUKE SLAP: THE ANSWER TO SITTING ON ITS TAIL ----
+      // A second attack, running the same commit -> windup -> lunge -> cooldown machine
+      // off the OTHER end of the animal (combat/aggression.js reads this one backwards
+      // from the flukes). It exists because the front-only `strikeSpan` above, which
+      // fixed being rammed by a tail from thirty metres, created a worse problem: the
+      // space behind a 21 m animal that takes four seconds to turn round was free
+      // damage forever. Tail-sitting was strictly the best way to fight a whale, which
+      // means it was not a fight.
+      //
+      // A real whale's answer to something on its tail is to hit it with the tail, and
+      // that is a fair answer here for the same reason the ram is: it is telegraphed,
+      // it is dodgeable, and you chose to be there.
+      //
+      // Note `strikeSpan` 0.45 against the ram's 0.55 — the two SUM TO 1, so every part
+      // of the animal belongs to exactly one attack and there is no band of body that is
+      // safe by accident. Front 11.5 m rams, rear 9.5 m slaps.
+      tail: {
+        strikeSpan: 0.45,
+        // Two thirds of the ram's 54. Three of these kill a fresh shark where two rams
+        // do: the slap is a punishment for a position, not the animal's best answer, and
+        // it should never be the reason you go for the tail rather than the head.
+        attack: 36,
+        // Longer than the ram's 3.0 and the one number the whole thing hangs on. The
+        // flukes sweep a much wider arc than a nose does, so a slap you could throw as
+        // often as a ram would make the tail the DANGEROUS end and just relocate the
+        // problem. 3.6 s is one slap per pass, and it shares `cool` with the ram, so an
+        // animal still gets exactly one attack per cooldown either way.
+        cooldown: 3.6,
+        // ---- COMMIT, REACH, AND THE DRIFT BETWEEN THEM ----
+        // A ram CLOSES on you: commit at 6, reach 4, and the animal covers the 2 m gap
+        // by swimming at you. A slap is the opposite — the whale keeps moving forward
+        // through the swing, so its flukes drift AWAY from a shark parked behind them,
+        // by about 2 m across the 0.95 s of windup and sweep. The gap between these two
+        // numbers is spent, not gained.
+        //
+        // Which is why it is only 1.5 m, and why it works out to the same rule as
+        // everything else here: a shark that is holding position when the tail lifts is
+        // out of range by the time it lands, and a shark that keeps following the tail —
+        // which is what biting it requires — is inside 4.5 m and gets hit. Back off on
+        // the tell and you are fine. Stay on it and you are not.
+        commit: 6,
+        reach: 4.5,    // a wide connect, because a fluke is wide
+        // 0.6 s of tail visibly rising (see `rear`) — longer than the ram's 0.75 s
+        // relative to its reach, so this is the MORE dodgeable of the two attacks:
+        // 7.3 m of warning at cruise against a 4.5 m sweep.
+        windup: 0.6,
+        lunge: 0.35,   // the sweep itself. Faster than the ram: a flick, not a shove.
+        windupMul: 0.45, // it plants and loads
+        // A fluke slap PROPELS the animal — that is what a tail is for — so it comes out
+        // of the swing moving, which separates the two of you instead of leaving a whale
+        // parked on the shark it just hit. Held down to 1.2 (3.6 m/s) rather than the 1.6
+        // this started at, because every metre of forward surge is a metre the flukes
+        // travel AWAY from the target mid-swing: past about 1.5 the attack starts
+        // outrunning its own hit and lands only on a shark that chases the tail through
+        // the tell. See `commit` above.
+        lungeMul: 1.2,
+        // Nearly stops steering for the swing. This is the one number that makes a tail
+        // attack possible at all: the chase logic turns this animal to FACE the shark,
+        // and that is exactly the motion that takes its flukes off the target. Holding
+        // the heading for 0.95 s is what lets the back end arrive where it was aimed.
+        turnMul: 0.25,
+        // POSITIVE, where the ram's is negative — the sign is the whole tell. Nose down
+        // means ten metres of tail lifting clear of the water it is about to come back
+        // through, and the pitch bias easing back to zero during the lunge IS the slap.
+        // So the two attacks look nothing alike even though they share every line of code.
+        rear: 0.4,
+        sfx: "whaleTail",
+      },
     },
   },
   {
@@ -263,7 +453,7 @@ export const CREATURES = [
     // the most characteristic thing it does. Every `every[0] + rng x every[1]` seconds
     // it abandons its waypoint's DEPTH — keeping its horizontal heading — climbs to
     // `depth` metres under the surface, and drops back to the reef when the trip budget
-    // runs out. See breathe() in creatures.js.
+    // runs out. See surfaceTrip() in creatures.js.
     //
     // `climbPitch` is why this works at all. The shared pitch limit is 0.5 rad, and at
     // that angle 55 m of ascent takes 8.7 s — with the 9 s descent that is a 22-second
@@ -292,7 +482,7 @@ export const CREATURES = [
     //
     // Raise `trip` for a longer visit up top, `depth` to stop short of the surface, and
     // `every` for the cadence. Note a chase CANCELS a breath outright (the flee block
-    // runs after breathe()), so none of this fires while you are actually on one.
+    // runs after surfaceTrip()), so none of this fires while you are actually on one.
     surface: { every: [30, 12], trip: 9, depth: 4, climbPitch: 0.95 },
     name: "Dolphin",
     // 10 x PLAYER.attack 20 = 200 hp, up from 60. Ten snaps at the base 0.8 s cooldown
@@ -325,6 +515,215 @@ export const CREATURES = [
     name: "Anglerfish",
     bites: 1,
     points: 3,
+  },
+  {
+    model: "manta",
+    // ---- THE ONE SPECIES THAT LIVES IN BOTH BASINS ----
+    // Everything above is reef-only, and the reason for that is still good: "the big
+    // animals live deeper" is the first thing the descent should teach, and a plain
+    // you can see across with a whale in it is not a plain. A manta ray is the
+    // exception that proves the rule rather than breaking it — it is the SMALLEST
+    // wildlife rig with a temper, it hugs the sand instead of filling the column, and
+    // meeting two of them on the plain is what teaches the neutral contract (bite it
+    // and it turns on you) somewhere the punishment is 16 damage rather than 54.
+    //
+    // 2 in the shallows and 3 on the reef, which is a deliberate gradient rather than
+    // a round number: level 1 is the tutorial and gets enough of them that you will
+    // certainly meet one, level 2 gets enough that they read as resident population.
+    levels: [
+      // The shallows' pair stay bottom-dwellers. Level 1's column is 42 m and the
+      // `band` below already reaches to 28 m under the surface, so there is no second
+      // storey here to visit — a surface routine in a puddle is just a wider band.
+      // Giving them one is this row plus a copy of the `surface` block underneath.
+      { level: 1, count: 2 },
+      // ---- THE REEF'S THREE SPLIT THEIR TIME, TOP AND BOTTOM ----
+      // Level 2 is 82 m of water, and a manta that lives entirely in the bottom 12 of
+      // it wastes the one thing that basin has that the shallows do not: height. So
+      // the reef population runs the same `surface` machinery the dolphin uses
+      // (surfaceTrip() in creatures.js) — but where a dolphin is going up for AIR in a
+      // hurry, this is a filter feeder working the plankton near the top and then
+      // gliding back down to the reef. Same code, opposite animal.
+      //
+      // ---- HOW THE 50/50 IS ACTUALLY ARRIVED AT ----
+      // The split is not a percentage anywhere in the code; it falls out of four
+      // numbers, and the two that decide it are the ones you cannot set — the transit
+      // times. From the middle of the band (y ≈ −56) to 5 m under the surface is a
+      // 69 m climb:
+      //
+      //   climb    69 m at 6.2 m/s x sin(1.0 rad) ≈ 5.2 m/s  ->  ~14 s
+      //   descent  69 m at the shared 0.5 rad limit, 2.97 m/s ->  ~23 s
+      //
+      // The descent is deliberately the slow half — a ray's return is a long glide,
+      // and it is the half the player is most likely to be watching. So to make the
+      // time ABOVE the midline equal the time BELOW it, the linger at the top has to
+      // be nine seconds longer than the linger at the bottom:
+      //
+      //   trip 38 s   = 14 climb + 24 at the surface   = 38 s in the upper half
+      //   every 38 s  = 23 glide down + 15 on the reef = 38 s in the lower half
+      //
+      // `every` is the gap between the END of one trip and the START of the next (see
+      // surfaceTrip()), which is why it is not trip + something. A 76-second cycle,
+      // and the three individuals are staggered independently from `live` at spawn, so
+      // at any moment roughly one is up top, one is in transit and one is on the reef —
+      // the SPECIES reads as doing both things at once even though each animal is only
+      // ever doing one.
+      //
+      // `trip` is a hard budget for climb + linger together, so raising it buys time at
+      // the surface only. Keep `every` ≈ `trip` and the split stays even.
+      {
+        level: 2,
+        count: 3,
+        surface: { every: [32, 12], trip: 38, depth: 5, climbPitch: 1.0 },
+      },
+    ],
+    sMin: 0.85,
+    sMax: 1.15,
+    // ---- SWIM BEHAVIOUR: A GLIDER, NOT A DARTER ----
+    // Low and wide. `band` keeps it in the bottom half of the habitat span — a manta
+    // cruising a metre off the sand over its own shadow is the whole reason to have
+    // one — with the top of the band high enough that it does sometimes lift into open
+    // water and cross above you. Read as height above the SEABED (levels.js HABITAT),
+    // so it means the same thing in the 42 m shallows as in the 82 m reef column.
+    //
+    // On the reef this is only HALF of where it lives: the `surface` block above takes
+    // it up to the top of the column for about half of every cycle, and the band is
+    // what it comes home to. The band is also what a FLEE target is clamped to, so a
+    // manta spooked at the surface dives for the reef.
+    band: [0.06, 0.42],
+    // The swim radius: it patrols most of its basin rather than holding one corner.
+    // Clamped per level against that basin's roam limit (creatures.js), so the same
+    // pair works in level 1's 95 m disc and level 2's 105 m one.
+    ring: [14, 66],
+    clip: "Armature|Swim",
+    // METRES PER WING BEAT is the dial here, exactly as it is for the dolphin's
+    // tail: speed / rate = 11.3 m a flap, about two body lengths. A manta FLAPS AND
+    // GLIDES — it is the slowest-beating animal in the game on purpose, and a ray
+    // whose wings keep up with its speed reads as a bird panicking rather than an
+    // animal that weighs a tonne.
+    rate: 0.55,
+    // Under the shark's 12.2 cruise by a wide margin, which is the design statement:
+    // the dolphin is the animal you cannot catch without spending boost, and this is
+    // the one you can always catch and might wish you hadn't. `speedCap` holds the
+    // top of the ±15% spawn jitter at 6.5 so `lungeMul` below stays honest.
+    speed: 6.2,
+    speedCap: 6.5,
+    // Turn radius is speed/turn = 8.9 m. Tighter than the dolphin's 12.9 despite
+    // being slower, so it corners visibly better than anything else out here — which
+    // is what a 4 m wing is FOR, and what makes it awkward to keep behind.
+    turn: 0.7,
+    dwell: [10, 8],
+    // Shy AND a fighter, which nothing else in the ocean is yet (see the FLEE block
+    // and the guard in creatures.js). It drifts off when you crowd it and turns on you
+    // only once you have actually bitten it — the exact disposition the roadmap's
+    // neutral row describes, and the whale can't show it because `shy: 0`.
+    //
+    // Set against FLEE the same way the dolphin's is: 0.55 x FLEE.distance 34 is an
+    // 18.7 m run, which at 6.2 m/s takes 3.0 s of the 3.5 s it commits to. So it
+    // clears the 22 m trigger radius on one clean line and neither stalls on a target
+    // it has already reached nor gets cut off halfway.
+    shy: 0.55,
+    // A flat animal cannot measure its own girth off its height: this rig is 6.0 m
+    // across and 0.96 m thick, so the default would hand it a 0.5 m body and you could
+    // not bite a wing you were sitting on. 2.25 is roughly the half-span of the inner
+    // disc — the part that is actually solid — which makes the hit capsule a 2.85 m
+    // sausage down the spine and keeps the wingtips as the bit you can swim through.
+    //
+    // THIS DOES NOT SCALE WITH `targetSize`; only the per-individual sMin/sMax jitter
+    // multiplies it. It went 1.5 -> 2.25 with the model's 50% growth by hand, and it
+    // has to be moved by hand again the next time the wingspan does.
+    girth: 2.25,
+    name: "Manta ray",
+    // 6 x PLAYER.attack 20 = 120 hp. Five seconds of unbroken biting at the base
+    // cooldown, so it sits between the dolphin's ten bites and a one-bite fish, and
+    // — unlike either — it is hitting back for two of those seconds.
+    bites: 6,
+    // 3.3 points a bite: above the whale's 3, below the dolphin's 4. It is the
+    // easiest thing in the game that fights back, so it pays like the easiest thing
+    // in the game that fights back. Also 8 hp of healing (COMBAT.healPerPoint)
+    // against the ~32 you spend taking one, which is the honest half of that trade.
+    points: 20,
+    // Faster than BITE.respawn's 60 s, because five of these ARE the resident
+    // population of two basins and a shallows with no manta in it is a shallows with
+    // no wildlife at all. Still long enough that clearing them out means finding
+    // something else to eat for a while.
+    respawn: 45,
+
+    // ---- THE SECOND NEUTRAL MOB ----
+    // Same four beats as the whale's block above — commit, windup, lunge, cooldown —
+    // and the same one invariant that is not a tuning choice: `windup` x the shark's
+    // 12.2 m/s cruise must exceed `reach`, or a hit stops being dodgeable. Here that
+    // is 0.45 x 12.2 = 5.5 m of warning against a 2.5 m strike. The warning is shorter
+    // than the whale's 0.75 s deliberately: this is a small quick animal and the
+    // reaction it asks for is a flinch rather than a stroll.
+    //
+    // Everything else is the whale scaled down. Where the whale is a WALL you buy
+    // upgrades to beat, the manta is a TAX on greed: you can kill one at level zero
+    // and it will cost you a third of your health if you are careless about the tell.
+    combat: {
+      // A third of the whale's 54. Seven strikes to kill a fresh shark, and the
+      // regen floor (COMBAT.regenRate) claws some of it back between fights — so
+      // this is the mob that teaches the tell instead of the one that punishes not
+      // knowing it. Two mantas at once, however, is a real fight.
+      attack: 16,
+      cooldown: 2.4, // quicker to come round again than the whale's 3.0
+      // Halved from 6.5 and 4.5 alongside the whale's, for the same reason and against
+      // the same measurement: hull-to-body-surface, both girths already subtracted. On
+      // an animal with a 2.25 girth, 4.5 m of reach meant a wingtip could tag a shark
+      // nearly two body lengths clear of it. 2.5 m is a wing actually reaching you.
+      //
+      // The 2 m of miss margin is kept: the manta closes ~1.7 m during its short windup
+      // and 4.6 m during the 0.4 s pass, so from 4.5 it lands on a shark that stayed and
+      // misses one that flinched. Both numbers are smaller than the whale's because the
+      // animal is — this is the fight you have to be right on top of to lose.
+      commit: 4.5,   // body-surface distance it decides to strike from...
+      reach: 2.5,    // ...and where the pass actually connects, so it can miss
+      // The front half is the DISC, and this number is measured off the rig rather than
+      // guessed: walk the mesh's vertices from the nose backwards and the half-width
+      // climbs to its maximum at 33-42% of the length, collapses at 42-50%, and past
+      // 55% is a whip tail 8 cm across. So 0.5 is the animal — wings, mouth and all —
+      // and it excludes 4 m of tail that has no business dealing 16 damage.
+      //
+      // Because the loader centres the pivot on the bounding box, 0.5 also happens to
+      // be exactly "from the nose to the pivot" here. That is a coincidence of this
+      // model's proportions, not a rule: read the number as the disc.
+      strikeSpan: 0.5,
+      windup: 0.45,  // the tell: wings up, nose up, half speed
+      lunge: 0.4,    // a flick of the whole disc, over almost before it starts
+      windupMul: 0.6,
+      // 11.5 m/s at the base speed and 12.0 at the capped top of the jitter, so the
+      // strike is always under the shark's 12.2 cruise. It shoves you; it never
+      // runs you down. Same rule as the whale's 4.4, arrived at from a much
+      // smaller base speed.
+      lungeMul: 1.85,
+      chaseMul: 1.5, // 9.3 m/s — you can always leave, without spending boost
+      // 1.19 rad/s against the shark's 1.6. Much closer than the whale's 0.62,
+      // which is what makes this the fight where circling is not a free win.
+      turnMul: 1.7,
+      rear: -0.35,   // nose and wings up: the whole disc loads
+      // ---- IT FOLLOWS A SHORT WAY AND THEN STOPS ----
+      // 18 m, roughly half the whale's 35, and down from this species' own first pass
+      // at 26. Measured PIVOT TO PIVOT on an 8.4 m animal, so half its length comes
+      // straight off it: 18 m from the pivot is only ~14 m of clear water from its
+      // nose, and about 11 m from the body surface its strike is measured against.
+      //
+      // Read it against `commit` 6.5, which is the number it must stay clear of: a
+      // leash that drops near the commit distance would make it disengage in the
+      // middle of its own strike. 18 against 6.5 leaves plenty of room to fight and
+      // still means that ONE unbroken length of swimming away ends it — the whole
+      // point of the change. This is a defensive animal, not a pursuer.
+      leash: 18,
+      // Cut with the leash rather than left at 7. The pair is what "gives up quickly"
+      // actually means: at cruise you cross 18 m in a second and a half, so the fight
+      // is over about 4 seconds after you decide to leave. Raise THIS, not the leash,
+      // if it ever feels like it forgets you mid-fight — the timer resets in full
+      // every time you come back inside 18 m, so poking it and pulling back is still
+      // one continuous fight and not a way to farm a reset.
+      forget: 4,
+      // Its own strike cue. The whale's is the fish-flee whoosh at half speed — a
+      // big animal shifting its weight — and at a manta's size that reads as a
+      // whale off screen. See AUDIO.mantaStrike.
+      sfx: "mantaStrike",
+    },
   },
 ];
 
@@ -449,9 +848,11 @@ export const BITE = {
 // side. Those are the upgrade system's to sell, from the menu, for points the player
 // chooses to spend — and a stat that also creeps up by itself can never be priced.
 //
-// What still scales with the shark's size is GEOMETRY, not numbers: jaw reach and
-// the hull the whale aims at. A 12.6 m animal with a 6 m animal's reach could not
-// bite past its own nose.
+// What still scales with the shark's size is GEOMETRY, not numbers: jaw reach, the
+// hull the whale aims at, and the strike distances it aims with (`commit`/`reach` in a
+// `combat` block — see combat/aggression.js). A 12.6 m animal with a 6 m animal's reach
+// could not bite past its own nose, and a mob with a 6 m shark's strike range could not
+// touch a 12.6 m one.
 export const COMBAT = {
   hitFlash: 0.22, // seconds the shark's whole body flashes white on being hit
   hitFlashGain: 2.4, // ...and how much emissive is added at the peak of it
@@ -793,4 +1194,16 @@ export const AUDIO = {
   // is worth more than one waiting on an asset.
   hurt: { url: "assets/audio/shark_bite.mp3", volume: 0.5, rate: [0.5, 0.62] },
   whaleStrike: { url: "assets/audio/fish-flee.mp3", volume: 0.55, rate: [0.45, 0.55] },
+  // The manta's version of the same telegraph, off the same file. Nearly its
+  // recorded rate rather than half of it, and quieter: a 4 m wing snapping is a
+  // sharp flick of water, not the low heave the whale's rate turns this into. A
+  // `combat.sfx` key on any future fighter — or any second ATTACK, see whaleTail —
+  // picks its cue out of this block by name.
+  mantaStrike: { url: "assets/audio/fish-flee.mp3", volume: 0.4, rate: [0.85, 1.0] },
+  // The fluke slap, and the loudest thing in this block: it has to be distinguishable
+  // from the ram it shares a source file with, because the two attacks come from
+  // opposite ends of the same animal and the player is behind it and cannot see the
+  // tell. Between the whale's 0.5 heave and the manta's 0.9 snap — the sound of a lot of
+  // water being moved quickly rather than a lot of animal being moved slowly.
+  whaleTail: { url: "assets/audio/fish-flee.mp3", volume: 0.62, rate: [0.7, 0.78] },
 };

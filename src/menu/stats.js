@@ -62,6 +62,19 @@ const WHALE_HP = (WHALE?.bites ?? 0) * PLAYER.attack;
 // anything, and it has to move when the whale is retuned.
 const WHALE_HIT = WHALE?.combat?.attack ?? 1;
 
+// ...and the other end of the same scale. The Health row is bought to survive things
+// that hit you, and there are two of those now — the whale at 54 and the manta at 16.
+// Quoting both is what turns the row from "how much hp" into "what you can now take",
+// which is the only reading of a capacity that means anything.
+const MANTA = CREATURES.find((c) => c.model === 'manta');
+const MANTA_HIT = MANTA?.combat?.attack ?? 1;
+
+// Strikes survived, not strikes to kill: you die ON the hit that takes you to zero, so
+// a 100 hp shark against 54 damage survives one and dies to the second.
+function survives(hp, hit) {
+  return Math.floor((hp - 1) / hit) + 1;
+}
+
 // The purchase half of a row. Null for a stat with nothing for sale, which is what
 // makes the page draw no button at all rather than a dead one.
 function buyState(key) {
@@ -87,7 +100,7 @@ export function readStats() {
       now: maxHealth(),
       max: healthCeiling(),
       unit: 'hp',
-      note: `+${UPGRADES.health.step} hp a level · survives ${Math.floor((maxHealth() - 1) / WHALE_HIT) + 1} whale strikes (${WHALE_HIT} dmg each) · eating heals ${COMBAT.healPerPoint} hp per point`,
+      note: `+${UPGRADES.health.step} hp a level · survives ${survives(maxHealth(), WHALE_HIT)} whale strikes (${WHALE_HIT} dmg) or ${survives(maxHealth(), MANTA_HIT)} manta (${MANTA_HIT}) · eating heals ${COMBAT.healPerPoint} hp per point`,
       buy: buyState('health'),
     },
     {

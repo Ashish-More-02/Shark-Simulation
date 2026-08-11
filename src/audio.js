@@ -95,8 +95,12 @@ export function playHurt() {
   playOnce(AUDIO.hurt);
 }
 
-export function playWhaleStrike() {
-  playOnce(AUDIO.whaleStrike);
+// The winding-up cue, per SPECIES: a whale heaving its weight around and a manta
+// flicking a wing are the same telegraph and not the same sound. `key` names a row
+// of AUDIO (a fighter's `combat.sfx`), and falls back to the whale's — so a new
+// combat block gets an audible tell whether or not it has picked its own file.
+export function playStrike(key) {
+  playOnce(AUDIO[key] || AUDIO.whaleStrike);
 }
 
 // Waking at the sanctuary after a death — the same splash the game opens on, which

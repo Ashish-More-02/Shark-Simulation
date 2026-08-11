@@ -37,23 +37,35 @@ const creatures = [];
 // the same seed puts the same whale in the same place at the same size facing the
 // same way; the roaming afterwards draws from `live`, because where a dolphin is
 // two minutes in depends on where the player chased it.
-const rng = makeStream('creatures');
+//
+// One stream PER SPECIES PER BASIN, set in createCreatures() below, rather than one
+// for the whole subsystem. A PRNG is a stream and not a hash of position, so whoever
+// draws first decides where everyone after them lands: on a shared sequence, giving
+// the shallows two manta rays would have moved every whale, dolphin and anglerfish on
+// the reef. Named per row, only the row you touched moves. Same argument and the same
+// convention as fish.js's `fish:<id>` — see the long note at the top of placement.js.
+let rng = makeStream('creatures');
 
-// How far out a creature may roam: the whole basin, stopping just short of the
-// bound. Kept out of the peaks deliberately — the wildlife does have rock
-// collision, but an animal that spends its life bouncing off mountain flanks and
-// re-routing looks broken rather than alive, so collision stays the backstop it
-// is meant to be rather than the thing that steers.
+// How far out a creature may roam: its OWN basin, stopping just short of the bound.
+// Kept out of the peaks deliberately — the wildlife does have rock collision, but an
+// animal that spends its life bouncing off mountain flanks and re-routing looks broken
+// rather than alive, so collision stays the backstop it is meant to be rather than the
+// thing that steers.
 //
-// Enforced as a CIRCLE, not a box: see clampRadius() in placement.js for why.
+// Enforced as a CIRCLE around that basin's centre, not a box: see clampRadius() in
+// placement.js for why.
 //
-// Taken from the REEF's own play bound rather than from a shared constant: the
-// wildlife lives in level 2 and its range has to grow when that level does.
-const ROAM_LIMIT = LEVELS[1].play - 10;
+// A function of the level rather than one module constant, which is what it was while
+// every creature lived on the reef. A species that lives in both basins (the manta
+// ray) has to be bounded by the one it is actually in, or the shallows' pair would
+// spend their lives ground against a circle drawn around the other level.
+function roamFor(level) {
+  return level.play - 10;
+}
 
 // How steeply anything here may climb or dive, in radians off level. Deliberately
 // shallow: these are big animals and a steep pitch reads as a missile. A species going
-// up for air may raise it for the climb only — see `climbPitch` and breathe().
+// to the surface may raise it for the climb only — see `climbPitch` and surfaceTrip().
 const PITCH_LIMIT = 0.5;
 
 // scratch — allocated once, reused every frame
@@ -71,12 +83,17 @@ const lastShark = new THREE.Vector3();
 // whole reef abandoned beneath them. Seabed-relative holds them exactly where
 // they were tuned to be, at any depth.
 //
-// Every creature lives in LEVELS[1] — the reef, centred on the origin — so the
-// floor is sampled at z = 0. Wildlife is deliberately absent from the shallows:
-// a plain you can see across with a whale in it is not a plain, and "the big
-// animals live deeper" is the first thing the descent should teach.
-function columnY(frac) {
-  return habitatY(frac, 0);
+// The floor is sampled at the animal's OWN basin centre, which is what makes one
+// `band` row mean the same height above the sand in the 42 m shallows as in the 82 m
+// reef column. It used to be hard-coded to z = 0 because every creature lived on the
+// reef; the manta ray is the one species that does not (CREATURES `levels`).
+//
+// Most wildlife is still deliberately absent from the shallows: a plain you can see
+// across with a whale in it is not a plain, and "the big animals live deeper" is the
+// first thing the descent should teach. The manta is the exception, and it is the
+// smallest rig with a temper for exactly that reason — see its row in config.js.
+function columnY(frac, homeZ) {
+  return habitatY(frac, homeZ);
 }
 
 // Shortest signed distance between two angles, so a creature crossing ±π turns
@@ -85,20 +102,28 @@ function angleDelta(from, to) {
   return Math.atan2(Math.sin(to - from), Math.cos(to - from));
 }
 
-// ---- GOING UP FOR AIR (species with a `surface` block — the dolphin) -----------
+// ---- TRIPS TO THE SURFACE (species with a `surface` block) ---------------------
+// Two species use this and they use it for opposite reasons, which is why it is called
+// a trip and not a breath: a DOLPHIN is a mammal and has to breathe, a MANTA RAY feeds
+// on what drifts near the top and then goes back down to the reef. Mechanically they
+// are the same animal — spend part of your life in a different part of the column —
+// and the numbers in each species' `surface` block are the whole difference.
+//
 // Overrides the DEPTH of whatever waypoint the animal is heading for, and nothing else:
-// it keeps its horizontal target, so a breath is a long climb along the course it was
-// already swimming rather than a lift ride. That is both easier to look at and less code
-// than a second kind of waypoint.
+// it keeps its horizontal target, so a trip is a long climb along the course it was
+// already swimming rather than a lift ride, and it keeps picking fresh waypoints while
+// it is up there — so it patrols the surface instead of parking at a point. That is
+// both easier to look at and less code than a second kind of waypoint.
 //
 // `surfacing` is a hard budget for the whole trip, climb included, so this can never
 // get stuck holding an animal against the ceiling — see the note on `surface` in
 // config.js for why the budget has to comfortably exceed the climb time.
 //
-// Runs BEFORE the flee block, which means a chase overrides a breath and the trip is
+// Runs BEFORE the flee block, which means a chase overrides a trip and the trip is
 // simply lost. That is the right precedence: nothing about being hunted should wait for
-// an animal to finish exhaling. It will try again on the next timer.
-function breathe(c, dt) {
+// an animal to finish exhaling. It will try again on the next timer. A FIGHT cancels it
+// outright at the call site, for the same reason and more bluntly — see updateCreatures.
+function surfaceTrip(c, dt) {
   const s = c.spec.surface;
 
   if (c.surfacing > 0) {
@@ -131,11 +156,18 @@ function breathe(c, dt) {
 function newWaypoint(c, draw) {
   const a = draw() * Math.PI * 2;
   const [inner, outer] = c.spec.ring;
-  // min() so a `ring` widened in config can never place a waypoint outside the
-  // circle the creature is actually allowed to reach — see ROAM_LIMIT.
-  const r = ringRadius(Math.min(inner, ROAM_LIMIT * 0.9), Math.min(outer, ROAM_LIMIT * 0.95), draw);
+  // min() so a `ring` widened in config — or authored for the wider basin of the two
+  // a species lives in — can never place a waypoint outside the circle this
+  // individual is actually allowed to reach. See roamFor().
+  const r = ringRadius(Math.min(inner, c.roam * 0.9), Math.min(outer, c.roam * 0.95), draw);
   const [lo, hi] = c.spec.band;
-  c.target.set(Math.cos(a) * r, columnY(lo + draw() * (hi - lo)), Math.sin(a) * r);
+  // Offset by its own basin's centre: the reef's is the origin, so the reef's
+  // wildlife lands exactly where it always did.
+  c.target.set(
+    c.home.x + Math.cos(a) * r,
+    columnY(lo + draw() * (hi - lo), c.home.z),
+    c.home.z + Math.sin(a) * r,
+  );
   c.retarget = c.spec.dwell[0] + draw() * c.spec.dwell[1];
 }
 
@@ -171,7 +203,7 @@ function lightUpLure(proto, { material, color, intensity }) {
   if (!found) console.warn(`glow material "${material}" not found`);
 }
 
-function spawn(proto, spec) {
+function spawn(proto, spec, level) {
   const size = spec.sMin + rng() * (spec.sMax - spec.sMin);
   const dims = measureBody(proto);      // NOT `body` — that's the roll group below
 
@@ -189,6 +221,12 @@ function spawn(proto, spec) {
 
   const c = {
     spec, pivot, body,
+    // The basin this individual belongs to: every waypoint, the roam clamp and the
+    // depth band are measured from here. Two mantas of the same species row can sit
+    // 280 m apart because each one carries its own home rather than reading a
+    // module-level constant. y is unused — the band supplies it.
+    home: new THREE.Vector3(level.center[0], 0, level.center[2]),
+    roam: roamFor(level),
     target: new THREE.Vector3(),
     yaw: rng() * Math.PI * 2,
     pitch: 0,
@@ -204,15 +242,23 @@ function spawn(proto, spec) {
     // resolved as one sphere at its middle would push its whole head through a
     // mountain before the centre ever registered contact.
     halfLength: dims.halfLength * size,
-    girth: dims.halfHeight * size,
+    // Body radius, for the bite capsule (prey.js) and rock collision. Measured off
+    // the animal's HEIGHT by default, which is the right answer for everything built
+    // like a tube — and the wrong one for a ray: a manta is 4 m across and 60 cm
+    // thick, so its measured girth would be 30 cm and a wing you were sitting on
+    // would not be biteable. `girth` in config overrides it, in world units at
+    // scale 1. Note `clearance` below deliberately stays MEASURED, because how far
+    // its belly hangs below its origin really is half its height — which is why a
+    // manta can glide a metre off the sand and a whale cannot.
+    girth: (spec.girth ?? dims.halfHeight) * size,
     retarget: 0,
     fleeFor: 0,        // seconds left on a committed escape line (FLEE below)
     // Air. Staggered from `live` rather than the seeded stream on purpose: when a
     // dolphin first takes a breath is not something a world seed describes, and drawing
     // from `rng` here would shift every creature spawned after it for a given seed.
     surfaceIn: spec.surface ? live() * spec.surface.every[0] : 0,
-    surfacing: 0,      // seconds left of a trip to the surface (breathe())
-    pitchMax: PITCH_LIMIT,   // raised by breathe() for the climb, and only for that
+    surfacing: 0,      // seconds left of a trip to the surface (surfaceTrip())
+    pitchMax: PITCH_LIMIT,   // raised by surfaceTrip() for a climb, and only for that
     mixer: null,
     // Own heading vector rather than a shared scratch: prey.js holds onto this as
     // the axis of the animal's capsule hit volume, so it has to stay valid between
@@ -266,10 +312,11 @@ function spawn(proto, spec) {
     name: spec.name,
     bites: spec.bites,
     points: spec.points,
+    respawn: spec.respawn,   // undefined = the world default, BITE.respawn
     track: true,        // wildlife shows up in the HUD's NEAREST bearing
     // The whole trigger for a neutral animal turning on you: it was bitten and it
     // survived. Species without a `combat` block ignore this (provoke() early-outs),
-    // which is every species but the whale.
+    // which is every species but the whale and the manta ray.
     onHit(damage, killed) { if (!killed) provoke(c); },
     danger() { return isHostile(c); },
     hide() { c.alive = false; pivot.visible = false; calm(c); },
@@ -305,17 +352,41 @@ function reseat(c) {
   newWaypoint(c, live);   // ...and now somewhere to actually swim
 }
 
+// Build every species, in every basin it lives in. Called ONCE for the whole world
+// rather than once per level (which is how fish and orbs are built): a species row is
+// the unit of authorship here, and one animal wanting to be in two places is a fact
+// about the animal, not about the levels.
 export function createCreatures(models) {
   for (const spec of CREATURES) {
     const proto = models[spec.model];
     if (!proto) { console.warn(`creature model "${spec.model}" not loaded`); continue; }
     if (spec.glow) lightUpLure(proto, spec.glow);
-    for (let i = 0; i < spec.count; i++) spawn(proto, spec);
+
+    // Which basins this species lives in, by level ID. Absent = the reef with `count`
+    // of them, which is every row but the manta ray's and is where all the wildlife
+    // lived before one species wanted to be in two places at once.
+    const homes = spec.levels ?? [{ level: LEVELS[1].id, count: spec.count }];
+
+    for (const home of homes) {
+      const level = LEVELS.find((L) => L.id === home.level);
+      if (!level) { console.warn(`creature "${spec.model}": no level with id ${home.level}`); continue; }
+      // Per-basin fields win over the species row, so an entry can carry its own
+      // count, band, ring or scale range without restating the whole animal — and a
+      // row with no overrides reads as just a count.
+      const local = { ...spec, ...home };
+      // Addressed by level and species, so retuning one population leaves the other
+      // exactly where it was. See the note on `rng` above.
+      rng = makeStream(`creatures:${level.id}:${spec.model}`);
+      for (let i = 0; i < local.count; i++) spawn(proto, local, level);
+    }
   }
   return creatures;
 }
 
-export function updateCreatures(dt, sharkPos, sharkGirth) {
+// `sharkGirth` is its hull radius and `sharkScale` its current growth — both only ever
+// used by the fighters (combat/aggression.js), which measures its strike against the
+// shark's hull and sizes that strike against how far the shark's own jaws now reach.
+export function updateCreatures(dt, sharkPos, sharkGirth, sharkScale) {
   lastShark.copy(sharkPos);      // for reseat(), when one of these respawns
 
   for (const c of creatures) {
@@ -329,20 +400,32 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
     // A fighting animal picks its own target (the shark) and its own throttle.
     // FIRST, so the dwell timer above cannot overwrite the chase and the flee
     // below cannot argue with it.
-    if (spec.combat) updateAggression(c, dt, sharkPos, sharkGirth);
+    if (spec.combat) updateAggression(c, dt, sharkPos, sharkGirth, sharkScale);
 
-    // ...then air, which only rewrites the target's DEPTH — so it stacks with the
-    // waypoint above rather than replacing it, and is itself overridden by the flee
-    // below. See breathe().
-    if (spec.surface) breathe(c, dt);
+    // ...then the surface trip, which only rewrites the target's DEPTH — so it stacks
+    // with the waypoint above rather than replacing it, and is itself overridden by the
+    // flee below. See surfaceTrip().
+    //
+    // A FIGHT cancels it outright rather than merely overriding it, and that guard is
+    // needed because this runs AFTER updateAggression() and writes the same target: a
+    // hostile manta mid-trip would otherwise chase the shark in x/z while holding its
+    // depth 5 m under the surface, which is an animal attacking you sideways. Clearing
+    // `surfacing` also puts the steep climb pitch back, so a fight is fought at the
+    // normal 0.5 rad limit. calm() picks a fresh waypoint, and the next trip comes
+    // round on the usual timer.
+    if (spec.surface) {
+      if (isHostile(c)) { c.surfacing = 0; c.pitchMax = PITCH_LIMIT; }
+      else surfaceTrip(c, dt);
+    }
 
     // ---- FLEEING: A COMMITTED ESCAPE LINE ----
     // Shy species break off and put distance between themselves and the shark. The
     // whale (shy: 0) keeps its course — nothing down here worries it — and a hostile
-    // one skips this outright: no species is currently both shy and a fighter, but
-    // this block runs after the chase above and writes the same `target`, so without
-    // the guard the day one is, it would flee and attack on alternate frames and do
-    // neither.
+    // one skips this outright — and the MANTA RAY is both shy and a fighter, so this
+    // guard is now load-bearing rather than defensive. This block runs after the chase
+    // above and writes the same `target`: without it a provoked manta would flee and
+    // attack on alternate frames and do neither. (The whale, `shy: 0`, never gets
+    // here at all.)
     //
     // The heading is picked ONCE and held for FLEE.hold seconds. It used to be
     // recomputed every frame from wherever the shark currently was, and that is what
@@ -375,8 +458,12 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
       // the creature spends the next few seconds grinding along the clamp instead
       // of swimming — a dolphin pinned flat against an invisible wall. Ignore
       // `ring`'s inner radius here: fleeing across the middle beats not fleeing.
-      clampRadius(c.target, ROAM_LIMIT * 0.95);
-      c.target.y = THREE.MathUtils.clamp(c.target.y, columnY(spec.band[0]), columnY(spec.band[1]));
+      clampRadius(c.target, c.roam * 0.95, c.home.x, c.home.z);
+      c.target.y = THREE.MathUtils.clamp(
+        c.target.y,
+        columnY(spec.band[0], c.home.z),
+        columnY(spec.band[1], c.home.z),
+      );
       c.fleeFor = FLEE.hold;
       // MAX, not min: the dwell timer must not interrupt the run it just committed to.
       // The old code shortened it instead, which re-picked a random waypoint two
@@ -418,7 +505,7 @@ export function updateCreatures(dt, sharkPos, sharkGirth) {
     pos.addScaledVector(c.fwd, c.speed * c.speedMul * dt);
 
     // --- bounds: off the dunes, under the surface, inside the roam circle ---
-    clampRadius(pos, ROAM_LIMIT);
+    clampRadius(pos, c.roam, c.home.x, c.home.z);
     // max() because clearance scales with the animal: give something a big enough
     // targetSize and its floor rises above its ceiling, and MathUtils.clamp
     // returns `min` when min > max — which would pin it to the sand for good.

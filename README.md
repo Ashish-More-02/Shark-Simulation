@@ -87,7 +87,7 @@ shark-game/
 │   ├── loader.js     # GLB load, scale/orientation normalize, mesh merging
 │   ├── props.js      # scatter placement + per-instance rock weathering
 │   ├── fish.js       # shoaling and fleeing — size classes + animated species
-│   ├── creatures.js  # roaming animated wildlife (whale, dolphins, anglerfish)
+│   ├── creatures.js  # roaming animated wildlife (whale, dolphins, anglerfish, manta rays)
 │   ├── orbs.js       # collectibles — also bonus growth points
 │   ├── prey.js       # registry of biteable animals: hp, hit volume, respawn
 │   ├── upgrades.js   # points earned/spent + every live player stat (Docs/systems/progression.md)
@@ -140,9 +140,11 @@ All knobs live at the top of `main.js`:
 - `MODELS` — per-model `targetSize` (auto-scales any source units), `rotY`
   (nose alignment) and `anchorBottom` (sit props on the seabed).
 - `PROPS` — one row per kind of scenery. Add a row, get scenery; no code changes.
-- `CREATURES` — the roaming animated wildlife. Each entry is a species: how many,
-  what depth band it keeps to, how fast and how tightly it turns, and how shy it
-  is of the shark.
+- `CREATURES` — the roaming animated wildlife. Each entry is a species: how many
+  and *which basins* (`levels`, by level id — the manta ray is the one species in
+  both), what depth band and swim radius it keeps to, how fast and how tightly it
+  turns, how shy it is of the shark, what eating it pays, and — for the whale and
+  the manta — a `combat` block that makes it fight back once bitten.
 - `FISH.classes` — the shoal size classes, from fry to lone lunkers.
 - `FISH.species` — the named animated shoals (blue fish, clownfish, fish-2). Same
   row shape as a class, plus the `clip`/`rate` that make it swim itself, a
@@ -231,8 +233,10 @@ All knobs live at the top of `main.js`:
   what keeps the bone-name lookups (`Spine1`, `Tail`, …) resolving inside its own
   subtree instead of colliding across copies.
 - **Wildlife is not instanced**, unlike the props — a skeleton per animal costs
-  real frame time, so the counts stay low (1 whale, 2 dolphins, 3 anglerfish).
-  They're set pieces you come across, not scenery.
+  real frame time, so the counts stay low (2 whales, 4 dolphins, 5 anglerfish,
+  5 manta rays). They're set pieces you come across, not scenery. Mixer gating by
+  camera distance (`PERF.mixerNear/Far`) is what keeps the far basin's share of them
+  free while you are in the other one.
 - **Shoals vary by size class.** Each school draws one entry from `FISH.classes`,
   which sets member scale, member count, school volume and cruise speed together
   — those all track body size in the same direction. Tail-beat rate divides by
