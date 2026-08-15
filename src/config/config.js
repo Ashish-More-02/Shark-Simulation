@@ -125,6 +125,31 @@ export const MODELS = {
   // Seabed litter
   log: { url: "assets/log.glb", targetSize: 3.2, rotY: 0, anchorBottom: true },
   bones: { url: "assets/fish-bones.glb", targetSize: 1.9, rotY: 0, anchorBottom: true },
+
+  // ---- REEF DECORATION -----------------------------------------------------
+  // Hand-placed dressing, not scatter. Nothing here has a PROPS row: these exist
+  // so the F4 editor can put them exactly where they read best, one at a time.
+  // Every targetSize below is a STARTING size against a 6-unit shark — the brush's
+  // `- =` keys scale from it, so treat these as sensible defaults rather than
+  // final numbers, and only edit a row here when its default is wrong everywhere.
+  //
+  // All ten are opaque, single-sided and static, so none needs `twoSided` and all
+  // of them anchor to the sand.
+  coralSet: { url: "assets/environment/reef_decoration/coral_set.glb", targetSize: 16, rotY: 0, anchorBottom: true },
+  coralGroup: { url: "assets/environment/reef_decoration/coral_group.glb", targetSize: 5.0, rotY: 0, anchorBottom: true },
+  coralPurple: { url: "assets/environment/reef_decoration/coral_purple.glb", targetSize: 4.0, rotY: 0, anchorBottom: true },
+  coralRed: { url: "assets/environment/reef_decoration/red_coral.glb", targetSize: 2.2, rotY: 0, anchorBottom: true },
+  coralYellow: { url: "assets/environment/reef_decoration/yellow_coral.glb", targetSize: 2.0, rotY: 0, anchorBottom: true },
+  reefRocks: { url: "assets/environment/reef_decoration/rocks.glb", targetSize: 3.5, rotY: 0, anchorBottom: true },
+  // A flat patch of several starfish, so targetSize is the patch's WIDTH — the
+  // model is 14x wider than it is tall and an individual star is a fraction of it.
+  starfish: { url: "assets/environment/reef_decoration/Starfish_group.glb", targetSize: 3.0, rotY: 0, anchorBottom: true },
+  // Distinct from `anemone` (sea-anemone.glb) — a smaller, rounder second species.
+  anemone2: { url: "assets/environment/reef_decoration/Anemone_2.glb", targetSize: 2.0, rotY: 0, anchorBottom: true },
+  clam: { url: "assets/environment/reef_decoration/clam.glb", targetSize: 1.4, rotY: 0, anchorBottom: true },
+  // The space in the filename is escaped, because the loader hands this string
+  // straight to fetch().
+  seaUrchin: { url: "assets/environment/reef_decoration/Sea%20Urchin.glb", targetSize: 0.9, rotY: 0, anchorBottom: true },
 };
 
 // Roaming wildlife — one skinned rig per instance, not instanced, so counts stay
@@ -1122,6 +1147,19 @@ export const EDITOR = {
     "log",
     "bones",
     "pebbles",
+
+    // Reef decoration — hand-placed only, so the brush is the ONLY way any of
+    // these reaches the world. Same big-to-small order as the block above.
+    "coralSet",
+    "coralGroup",
+    "coralPurple",
+    "coralRed",
+    "coralYellow",
+    "reefRocks",
+    "starfish",
+    "anemone2",
+    "clam",
+    "seaUrchin",
   ],
   distance: 26, // how far ahead of the shark the brush starts
   eraseRadius: 15, // starting size of the erase circle (Tab switches to it)

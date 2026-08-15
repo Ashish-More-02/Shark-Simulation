@@ -326,6 +326,11 @@ function planInstances(count, opts, keepTexture, level, streamName) {
       x, z, y: floorAt(x, z) - sink * scale,
       rotY,
       tilt: tilt ? tiltK * tilt : 0,
+      // Scatter never pitches. A row's `tilt` is a LEAN — a plant off vertical, a
+      // rock settled at an angle — and one axis of it is enough to sell that.
+      // Pitch exists for hand-placed props only (see the fixed loop below), where
+      // it is aimed rather than rolled.
+      pitch: 0,
       scale,
       tint,
       phase,
@@ -375,9 +380,18 @@ function planInstances(count, opts, keepTexture, level, streamName) {
       const phase = draw() * Math.PI * 2;
       const ampK = 0.6 + draw() * 0.8;
       items.push({
+        // A NEGATIVE `sink` lifts: this is the one term that puts a prop off the
+        // seabed, and it is how the editor writes a floating one. It is multiplied
+        // by `scale` like the buried case, so the offset is in model heights and a
+        // scaled-up copy of an entry keeps its proportions.
         x, z, y: floorAt(x, z) - (f.sink ?? sink) * scale,
         rotY: f.rotY ?? rotY,
         tilt: f.tilt ?? (tilt ? tiltK * tilt : 0),
+        // The third rotation axis, and hand-placed only — nothing scatters with a
+        // pitch. With `tilt` (roll) it gives a fixed entry full freedom of
+        // orientation, which is what an object leaning out of a wall or hanging
+        // under an overhang needs and what a lean alone cannot express.
+        pitch: f.pitch ?? 0,
         scale,
         // Tint last, for the reason given in the scatter loop above.
         tint: palette ? rockColour(palette, keepTexture, draw).clone()
@@ -400,7 +414,11 @@ function planInstances(count, opts, keepTexture, level, streamName) {
 // plant's own upright frame.
 function writeMatrix(mesh, index, item, protoScale) {
   scratch.position.set(item.x, item.y, item.z);
-  scratch.rotation.set(0, item.rotY, item.tilt);
+  // XYZ Euler order (three's default), so this reads pitch, then yaw, then roll.
+  // The editor's ghost composes its preview in exactly this order — if one of
+  // these ever changes order, the other has to move with it or every hand-placed
+  // prop lands at an orientation you did not aim.
+  scratch.rotation.set(item.pitch, item.rotY, item.tilt);
   scratch.scale.setScalar(protoScale * item.scale);
   scratch.updateMatrix();
   mesh.setMatrixAt(index, scratch.matrix);

@@ -21,6 +21,10 @@ export const LEVEL_1 = {
     { x: -43.4, z: -18.2, r: 21 },
     { x: -0.0, z: -100.4, r: 21 },
     { x: -5.9, z: -136.6, r: 3 },
+    { x: 46.8, z: 6.4, r: 33 },
+    { x: 10.8, z: 31.9, r: 15 },
+    { x: -5.5, z: 27.4, r: 15 },
+    { x: -22.3, z: 1.5, r: 15 },
   ],
 };
 
@@ -139,6 +143,10 @@ export const PROPS_PLAIN = [
     fixed: [
       { x: 16.3, z: -113.5, scale: 1.97, rotY: -0.52 },
       { x: 10.5, z: -109.0, scale: 1.97, rotY: -0.52 },
+      { x: 10.2, z: 48.0, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: 69.3, z: 51.3, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: 63.1, z: 48.3, scale: 2.48, rotY: -2.34, pitch: -0.13, sink: -0.20 },   // level 1
+      { x: 66.8, z: 35.0, scale: 2.48, rotY: -2.34, pitch: -0.13, sink: -0.20 },   // level 1
     ],
   },
   {
@@ -156,6 +164,15 @@ export const PROPS_PLAIN = [
       { x: -23.5, z: -100.6, scale: 4.36, rotY: -0.52 },
       { x: 26.2, z: -87.9, scale: 4.36, rotY: -0.52 },
       { x: 31.2, z: -76.9, scale: 4.36, rotY: -0.52 },
+      { x: 34.3, z: -29.8, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 32.6, z: -64.3, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 9.4, z: -43.4, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 19.6, z: -37.4, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -37.1, z: -11.5, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -38.0, z: 44.2, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -60.2, z: -2.0, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: -60.5, z: 5.6, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: -51.7, z: 0.4, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
     ],
   },
   {
@@ -191,4 +208,147 @@ export const PROPS_PLAIN = [
       { x: 29.6, z: -99.3, scale: 1.4, rotY: -0.91 },
     ],
   },
+   { model: 'reefRocks', count: 0,
+    fixed: [
+      { x: 72.2, z: -21.5, scale: 3.48 },   // level 1
+      { x: 64.3, z: 66.9, scale: 3.48 },   // level 1
+      { x: 4.4, z: -34.9, scale: 3.48 },   // level 1
+      { x: -90.0, z: 10.5, scale: 3.48 },   // level 1
+      { x: -92.9, z: 30.6, scale: 3.48 },   // level 1
+      { x: 51.7, z: 46.9, scale: 1.76, sink: 0.28 },   // level 1
+      { x: 60.8, z: 51.9, scale: 1.57, sink: 0.32 },   // level 1
+      { x: 40.5, z: 53.5, scale: 1.57, sink: 0.32 },   // level 1
+      { x: 43.3, z: -10.3, scale: 1.57, pitch: -0.13, sink: -0.32 },   // level 1
+      { x: 49.7, z: -2.2, scale: 1.57, pitch: -0.13, sink: -0.32 },   // level 1
+      { x: 58.4, z: -35.0, scale: 1.57, pitch: -0.13, sink: -0.32 },   // level 1
+      { x: -39.3, z: -2.5, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 15.4, z: 2.3, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 8.7, z: 11.8, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 29.3, z: 5.6, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 30.0, z: 21.7, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -7.5, z: 33.1, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -20.6, z: 6.6, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 37.0, z: -33.2, scale: 1.40, rotY: -2.34, pitch: -0.13, sink: -0.36 },   // level 1
+      { x: 29.5, z: -20.7, scale: 1.76, rotY: -2.34, pitch: -0.13, sink: -0.28 },   // level 1
+    ] },
+  { model: 'coralGroup', count: 0,
+    fixed: [
+      { x: 14.8, z: -40.8, scale: 1.97 },   // level 1
+      { x: 6.2, z: -47.2, scale: 1.97 },   // level 1
+      { x: -9.9, z: -28.1, scale: 1.97 },   // level 1
+      { x: 35.9, z: 30.9, scale: 1.97 },   // level 1
+      { x: 28.7, z: 33.1, scale: 1.97 },   // level 1
+      { x: 37.8, z: 36.8, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 4.8, z: -61.5, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 19.8, z: -56.2, scale: 1.76, pitch: -0.13, sink: -0.28 },   // level 1
+    ] },
+  { model: 'coralPurple', count: 0,
+    fixed: [
+      { x: 45.2, z: 32.6, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 35.6, z: 42.6, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 1.1, z: -27.8, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 16.5, z: -33.3, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 13.7, z: -46.9, scale: 1.97, sink: 0.25 },   // level 1
+      { x: 24.1, z: 31.5, scale: 1.97, sink: 0.25 },   // level 1
+      { x: -3.0, z: -38.4, scale: 3.48, pitch: -0.13, sink: -0.14 },   // level 1
+      { x: 22.1, z: -44.3, scale: 3.48, pitch: -0.13, sink: -0.14 },   // level 1
+      { x: -7.2, z: -59.7, scale: 3.90, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: -8.3, z: -50.2, scale: 1.97, pitch: -0.13, sink: -0.25 },   // level 1
+    ] },
+  { model: 'coralYellow', count: 0,
+    fixed: [
+      { x: 57.1, z: -57.4, scale: 4.36, sink: 0.11 },   // level 1
+      { x: 59.3, z: -52.9, scale: 3.48, sink: 0.14 },   // level 1
+      { x: 50.1, z: -56.2, scale: 3.11, sink: 0.16 },   // level 1
+      { x: 54.4, z: 50.9, scale: 3.48, sink: 0.14 },   // level 1
+      { x: 52.0, z: 55.3, scale: 3.90, sink: 0.13 },   // level 1
+      { x: 49.3, z: 51.0, scale: 2.77, sink: 0.18 },   // level 1
+      { x: 47.5, z: 55.0, scale: 2.21, sink: 0.23 },   // level 1
+      { x: 16.9, z: 8.7, scale: 5.47, rotY: -2.34, pitch: -0.13, sink: -0.09 },   // level 1
+      { x: 23.9, z: 10.9, scale: 4.89, rotY: -2.34, pitch: -0.13, sink: -0.10 },   // level 1
+      { x: 11.6, z: 16.4, scale: 4.89, rotY: -2.34, pitch: -0.13, sink: -0.10 },   // level 1
+      { x: 16.2, z: 14.4, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 26.0, z: 14.8, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 24.2, z: 1.6, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 18.8, z: 0.9, scale: 3.90, rotY: -2.34, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: 9.7, z: 5.7, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 17.4, z: 74.3, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 14.9, z: 80.5, scale: 4.36, rotY: -2.34, pitch: -0.13, sink: -0.11 },   // level 1
+      { x: 23.0, z: 81.1, scale: 4.36, rotY: -2.34, pitch: -0.13, sink: -0.11 },   // level 1
+      { x: -14.7, z: 76.9, scale: 4.36, rotY: -2.34, pitch: -0.13, sink: -0.11 },   // level 1
+      { x: -13.3, z: 71.4, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: -10.5, z: 74.5, scale: 2.77, rotY: -2.34, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -43.4, z: -27.0, scale: 2.77, rotY: -2.34, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -42.0, z: -30.2, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -40.2, z: -26.1, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+    ] },
+  { model: 'starfish', count: 0,
+    fixed: [
+      { x: -7.4, z: 21.0, scale: 3.90, sink: 0.13 },   // level 1
+      { x: -40.9, z: -29.0, scale: 3.90, sink: 0.13 },   // level 1
+      { x: -34.3, z: -16.3, scale: 1.40, pitch: -0.13, sink: -0.36 },   // level 1
+      { x: 53.0, z: -48.8, scale: 1.40, pitch: -0.13, sink: -0.36 },   // level 1
+    ] },
+  { model: 'anemone2', count: 0,
+    fixed: [
+      { x: -20.8, z: 15.1, scale: 3.48, pitch: -0.13, sink: -0.14 },   // level 1
+      { x: -15.1, z: 20.2, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -13.7, z: 12.3, scale: 2.48, pitch: -0.13, sink: -0.20 },   // level 1
+      { x: -13.5, z: 27.6, scale: 2.48, pitch: -0.13, sink: -0.20 },   // level 1
+      { x: -19.6, z: 23.9, scale: 4.89, pitch: -0.13, sink: -0.10 },   // level 1
+      { x: 75.7, z: 7.7, scale: 3.90, pitch: -0.13, sink: -0.13 },   // level 1
+      { x: 74.7, z: 13.6, scale: 3.11, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 72.6, z: 9.8, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -8.0, z: 17.6, scale: 2.21, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -11.2, z: 21.4, scale: 2.21, pitch: -0.13, sink: -0.23 },   // level 1
+    ] },
+  { model: 'seaUrchin', count: 0,
+    fixed: [
+      { x: 29.5, z: 29.4, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 34.2, z: 35.0, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 24.5, z: 37.3, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 45.0, z: 55.9, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 44.7, z: 59.2, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 73.4, z: -14.0, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 76.5, z: -16.6, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 72.9, z: -17.7, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -68.5, z: 7.5, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -69.3, z: 13.2, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -73.7, z: 8.4, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: -72.3, z: 5.3, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+    ] },
+  { model: 'coralRed', count: 0,
+    fixed: [
+      { x: 50.3, z: -10.0, scale: 2.77, pitch: -0.13, sink: -0.18 },   // level 1
+      { x: 47.2, z: -11.2, scale: 2.21, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: 48.6, z: -6.1, scale: 5.47, pitch: -0.13, sink: -0.09 },   // level 1
+      { x: 60.0, z: -26.2, scale: 6.13, pitch: -0.13, sink: -0.08 },   // level 1
+      { x: 59.3, z: -30.7, scale: 3.48, pitch: -0.13, sink: -0.14 },   // level 1
+      { x: -16.1, z: 16.2, scale: 1.97, rotY: -2.34, pitch: -0.13, sink: -0.25 },   // level 1
+      { x: -13.9, z: 16.8, scale: 1.40, rotY: -2.34, pitch: -0.13, sink: -0.36 },   // level 1
+      { x: -17.5, z: 14.2, scale: 1.12, rotY: -2.34, pitch: -0.13, sink: -0.45 },   // level 1
+    ] },
+  { model: 'coralSet', count: 0,
+    fixed: [
+      { x: -47.6, z: 44.5, scale: 1.12, rotY: -2.34, pitch: -0.13, sink: -0.45 },   // level 1
+      { x: -26.3, z: 74.1, scale: 1.12, rotY: -2.34, pitch: -0.13, sink: -0.45 },   // level 1
+      { x: 28.2, z: 71.5, scale: 1.12, rotY: -2.34, pitch: -0.13, sink: -0.45 },   // level 1
+    ] },
+  { model: 'clam', count: 0,
+    fixed: [
+      { x: -20.8, z: 61.4, scale: 2.21, rotY: -2.34, pitch: -0.13, sink: -0.23 },   // level 1
+      { x: -18.7, z: 64.2, scale: 1.40, rotY: -2.34, pitch: -0.13, sink: -0.36 },   // level 1
+      { x: -17.1, z: 60.5, scale: 1.25, rotY: -2.34, pitch: -0.13, sink: -0.40 },   // level 1
+      { x: -27.6, z: 47.7, scale: 1.76, rotY: -2.34, pitch: -0.13, sink: -0.28 },   // level 1
+      { x: -35.2, z: -20.9, scale: 1.76, rotY: -2.34, pitch: -0.13, sink: -0.28 },   // level 1
+      { x: -31.4, z: -20.4, scale: 1.25, rotY: -2.34, pitch: -0.13, sink: -0.40 },   // level 1
+      { x: -31.4, z: -9.6, scale: 1.25, rotY: -2.34, pitch: -0.13, sink: -0.40 },   // level 1
+      { x: -37.1, z: -6.4, scale: 1.00, rotY: -2.34, pitch: -0.13, sink: -0.50 },   // level 1
+      { x: -35.9, z: -4.3, scale: 0.89, rotY: -2.34, pitch: -0.13, sink: -0.56 },   // level 1
+      { x: 59.8, z: -43.4, scale: 3.48, rotY: -2.34, pitch: -0.13, sink: -0.14 },   // level 1
+      { x: 56.4, z: -38.9, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 52.4, z: -52.5, scale: 3.11, rotY: -2.34, pitch: -0.13, sink: -0.16 },   // level 1
+      { x: 30.9, z: -25.4, scale: 1.97, rotY: -2.34, pitch: -0.13, sink: -0.25 },   // level 1
+      { x: 31.2, z: -28.9, scale: 1.40, rotY: -2.34, pitch: -0.13, sink: -0.36 },   // level 1
+    ] },
 ];

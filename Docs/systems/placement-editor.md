@@ -43,9 +43,12 @@ showing exactly what will be placed. Press **Enter**.
 | `Tab` | Switch between the **place** brush and the **erase** brush |
 | `[` `]` | Previous / next model |
 | `-` `=` | Smaller / bigger (×1.12 a step) — erase radius in erase mode |
-| `,` `.` | Turn |
+| `,` `.` | Yaw |
+| `↑` `↓` | Pitch — nose down / up, like a flight stick |
+| `←` `→` | Roll |
+| `R` | Level it — all three rotations back to zero |
+| `9` `0` | Raise / lower, from floating in open water to buried in the sand |
 | `;` `'` | Pull the brush closer / push it further away |
-| `9` `0` | Sink into the sand / raise out of it |
 | `Enter` | Place it — or erase, in erase mode |
 | `Backspace` | Undo the last one |
 | `\` | Copy a ready-to-paste config block |
@@ -53,6 +56,35 @@ showing exactly what will be placed. Press **Enter**.
 The readout shows the coordinates **local to whichever level you are in**, which
 is the number that ends up in the config, so what you see on screen is what gets
 written.
+
+**The arrows stop steering while the editor is open** and rotate the ghost
+instead. WASD still swims — which matters, because swimming is how the brush is
+aimed — so the arrows lose nothing but their alias.
+
+### Off the seabed, at any angle
+
+The brush has all three rotations and a free height, so a prop does not have to
+sit flat on the sand. That is the difference between dressing a seabed and
+dressing a **reef**: coral grows sideways out of a wall, a fan hangs under an
+overhang, and a scene only reads as having depth when some of it is above you.
+
+`9` and `0` are unclamped in both directions:
+
+- **Up** is the water column — the shallows have 42 units of it, the reef 82.
+  Nothing holds a floating prop up, so it is genuinely hanging in open water; put
+  it against a wall or under something or it will read as a bug.
+- **Down** is the old sink, and still the right answer for anything flat-bottomed
+  on a slope (see *Placing well* below).
+
+Height is tracked in **world units** while you work but exported as `sink`, which
+props.js measures in *model heights* and *downward* — so 8 units up at scale 2
+comes out as `sink: -4.00`. The editor does the conversion; the reason it does not
+simply store what it exports is that resizing would then move the prop, and every
+press of `=` on a floating one would launch it.
+
+The readout says `on the sand` / `12.4 above sand` / `3.0 buried` rather than a
+signed number, because height is the one control here with no ghost cue of its own
+once the seabed is out of frame.
 
 ### Placing well
 
@@ -177,6 +209,28 @@ pin its identity by hand if that matters.
     ] },
 ```
 
+Each entry carries its own orientation and height, and only the ones you actually
+touched are written — a prop you placed square on the sand still exports as the
+bare four fields above:
+
+```js
+  { model: 'coralPurple', count: 0,
+    fixed: [
+      { x: 12.0, z: -38.0, scale: 1.40, rotY: 0.65, pitch: -0.39, tilt: 0.26, sink: -2.14 },
+    ] },
+```
+
+| Field | Means |
+|---|---|
+| `rotY` | yaw |
+| `pitch` | nose up / down (hand-placed only — scatter never pitches) |
+| `tilt` | roll. props.js has called the z rotation `tilt` since before there was a pitch to pair it with, and the name stayed |
+| `sink` | height, **downward**, in model heights — so a negative one floats |
+
+Because these are written per entry, the row-level `sink` and `tilt` defaults do
+not apply to them: an entry that names one overrides the row, and the editor names
+every one you moved.
+
 Drop it into the right table in `config.js` — `PROPS` for the reef,
 `PROPS_PLAIN` for the shallows — and **add the row's usual options**, because the
 editor records placement only, not appearance or collision:
@@ -231,6 +285,11 @@ things actually worth hand-placing come first. Any key from `MODELS` can go in i
 - **Nothing survives a reload.** Press `\` before you refresh.
 - **Erase is area-only**, and it cannot take out a hand-placed prop — delete that
   one's line instead.
-- **The ghost ignores `tilt`.** Rows with tilt jitter their instances at build
-  time, so a hand-placed one will not match its ghost exactly if you paste it into
-  a tilted row. Hand-placed landmarks generally want `tilt: 0` anyway.
+- **Collision does not follow a prop off the sand.** A `solid` row's collider is a
+  vertical capsule standing on the instance's base, so a floating or steeply
+  pitched prop gets a collider in roughly the right place and the wrong shape.
+  Fine for decoration, which is what wants those angles; do not hang a `solid`
+  landmark in open water and expect to bump into it correctly.
+- **Sway assumes upright.** A swaying row bends around the plant's own vertical
+  axis, so pitching or rolling one bends it in a direction that no longer matches
+  the current. Reef decoration does not sway, so this only bites if you pitch kelp.

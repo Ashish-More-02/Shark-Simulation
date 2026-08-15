@@ -5,6 +5,7 @@ import { floorAt } from './terrain.js';
 import { levelAt } from './levels.js';
 import { clearArea } from './props.js';
 import { sharkState } from './shark.js';
+import { setArrowsCaptured } from './input.js';
 import { setEditorPanel, showEditorPanel } from './hud.js';
 
 // ============================================================
@@ -35,10 +36,32 @@ let erasing = false;      // Tab switches between the place brush and the erase 
 // Current brush
 let modelIndex = 0;
 let scale = 1;
-let rotY = 0;
 let dist = EDITOR.distance;
-let sink = 0;
 let eraseR = EDITOR.eraseRadius;
+
+// ---- THE BRUSH TRANSFORM ---------------------------------------------------
+// Three rotations and a height, so a prop can be put anywhere in the water column
+// at any orientation — not just seated flat on the sand. That is the whole
+// difference between dressing a seabed and dressing a REEF: coral grows out of
+// walls sideways, a fan hangs under an overhang, a shoal of decoration reads as
+// depth only when some of it is above you.
+//
+// `rotY` yaw, `pitch` nose up/down, `roll` bank. They are applied as a THREE
+// Euler in the default XYZ order, which is the order props.js composes a fixed
+// entry in — the two must not drift apart or the ghost stops telling the truth.
+let rotY = 0;
+let pitch = 0;
+let roll = 0;
+
+// Height off the seabed in WORLD UNITS, positive up. Negative buries it, which is
+// what the old `sink` did and still the right answer for anything flat-bottomed
+// standing on a slope.
+//
+// World units, not model heights, even though props.js stores the export as model
+// heights (`sink`, which it multiplies by scale). The conversion happens once, at
+// export. Doing it this way round means resizing a floating prop leaves it at the
+// height you put it — with the offset scaled, every press of `=` would launch it.
+let lift = 0;
 
 // The translucent preview, rebuilt whenever the model changes.
 let ghost = null;
@@ -108,8 +131,9 @@ function brushPoint(out) {
 
 function applyTransform(obj, at) {
   const proto = models[currentKey()];
-  obj.position.set(at.x, at.y - sink * scale, at.z);
-  obj.rotation.set(0, rotY, 0);
+  obj.position.set(at.x, at.y + lift, at.z);
+  // XYZ Euler, matching writeMatrix() in props.js exactly. See the note on `rotY`.
+  obj.rotation.set(pitch, rotY, roll);
   obj.scale.setScalar(proto.scale.x * scale);
 }
 
@@ -118,7 +142,9 @@ function place() {
   const obj = spawn(currentKey(), false);
   if (!obj) return;
   applyTransform(obj, at);
-  placed.push({ obj, model: currentKey(), x: at.x, z: at.z, scale, rotY, sink });
+  placed.push({
+    obj, model: currentKey(), x: at.x, z: at.z, scale, rotY, pitch, roll, lift,
+  });
 }
 
 function erase() {
@@ -191,8 +217,17 @@ function exportText() {
       const lx = (p.x - L.center[0]).toFixed(1);
       const lz = (p.z - L.center[2]).toFixed(1);
       const rot = Math.abs(p.rotY) > 1e-3 ? `, rotY: ${p.rotY.toFixed(2)}` : '';
-      const sk = p.sink ? `, sink: ${p.sink.toFixed(1)}` : '';
-      return `      { x: ${lx}, z: ${lz}, scale: ${p.scale.toFixed(2)}${rot}${sk} },   // level ${L.id}`;
+      // `tilt` IS roll — props.js has called the z rotation that since before there
+      // was a pitch to go with it, and renaming a config field to match the editor's
+      // vocabulary would break every row already using it.
+      const pt = Math.abs(p.pitch) > 1e-3 ? `, pitch: ${p.pitch.toFixed(2)}` : '';
+      const rl = Math.abs(p.roll) > 1e-3 ? `, tilt: ${p.roll.toFixed(2)}` : '';
+      // World units back to model heights, and the sign flips: props.js measures
+      // `sink` DOWNWARD from the sand. So a prop floating 8 units up at scale 2
+      // comes out as sink: -4.00, and props.js lifts it by the same 8.
+      const y = p.lift / p.scale;
+      const sk = Math.abs(y) > 1e-3 ? `, sink: ${(-y).toFixed(2)}` : '';
+      return `      { x: ${lx}, z: ${lz}, scale: ${p.scale.toFixed(2)}${rot}${pt}${rl}${sk} },   // level ${L.id}`;
     });
     out.push(
       `  { model: '${model}', count: 0,\n` +
@@ -203,8 +238,10 @@ function exportText() {
   return (
     `// ---- placed in-game with the F4 editor ----\n` +
     `// Paste into the PROPS table for the level named on each line, then add the\n` +
-    `// row's usual options (palette / solid / taper / shade / sway / sink / tilt)\n` +
+    `// row's usual options (palette / solid / taper / shade / sway / cutout)\n` +
     `// — the editor only records placement, not material and collision settings.\n` +
+    `// Each entry carries its own orientation and height, so the row-level sink\n` +
+    `// and tilt defaults do not apply to these; a negative sink means it floats.\n` +
     out.join('\n') +
     (clears ? `\n\n${clears}` : '')
   );
@@ -252,14 +289,26 @@ function draw() {
     return;
   }
 
-  const height = (MODELS[currentKey()].targetSize * scale).toFixed(1);
+  const size = (MODELS[currentKey()].targetSize * scale).toFixed(1);
+  // Reads "on the sand" / "12.4 above sand" / "3.0 buried", because a signed
+  // number alone does not say which way is which, and height is the one control
+  // here with no ghost cue of its own once the seabed is out of frame.
+  const heightWord =
+    Math.abs(lift) < 0.05 ? 'on the sand'
+    : lift > 0 ? `${lift.toFixed(1)} above sand`
+    : `${(-lift).toFixed(1)} buried`;
+  const deg = (r) => `${(r * 57.3).toFixed(0)}°`;
+
   setEditorPanel(
     `<b>PLACE</b>  ${currentKey()}  <span class="dim">(${modelIndex + 1}/${EDITOR.models.length})</span>\n` +
-    `scale ${scale.toFixed(2)}   height ${height}   yaw ${(rotY * 57.3).toFixed(0)}°   sink ${sink.toFixed(1)}\n` +
+    `scale ${scale.toFixed(2)}   size ${size}   ${heightWord}\n` +
+    `yaw ${deg(rotY)}   pitch ${deg(pitch)}   roll ${deg(roll)}\n` +
     where +
     `placed ${placed.length}   cleared ${cleared.length}\n` +
     `<span class="dim">[ ]</span> model   <span class="dim">- =</span> scale   ` +
-    `<span class="dim">, .</span> yaw   <span class="dim">9 0</span> sink\n` + tail
+    `<span class="dim">9 0</span> up / down\n` +
+    `<span class="dim">, .</span> yaw   <span class="dim">arrows</span> pitch / roll   ` +
+    `<span class="dim">R</span> level it\n` + tail
   );
 }
 
@@ -291,6 +340,9 @@ addEventListener('keydown', (e) => {
     if (!models || !sharkState.obj) return;
     on = !on;
     showEditorPanel(on);
+    // The arrows rotate the ghost while this is open, so they stop steering — WASD
+    // still does, because swimming is how the brush is aimed.
+    setArrowsCaptured(on);
     if (on) { rebuildGhost(); draw(); }
     else {
       if (ghost) { scene.remove(ghost); ghost = null; }
@@ -315,10 +367,22 @@ addEventListener('keydown', (e) => {
       break;
     case 'Comma':  rotY -= 0.13; break;
     case 'Period': rotY += 0.13; break;
+    // Pitch and roll on the arrows: the same 0.13 rad (7.4°) step as yaw, so a
+    // press is worth the same wherever you spend it and 24 of them is a full turn.
+    // The arrows are steering aliases in normal play — the editor takes them for
+    // as long as it is open, see setArrowsCaptured() below.
+    case 'ArrowUp':    pitch -= 0.13; break;   // nose down, matching a flight stick
+    case 'ArrowDown':  pitch += 0.13; break;
+    case 'ArrowLeft':  roll  += 0.13; break;
+    case 'ArrowRight': roll  -= 0.13; break;
+    case 'KeyR': rotY = pitch = roll = 0; break;
     case 'Semicolon': dist = Math.max(4, dist - 4); break;
     case 'Quote':     dist = Math.min(220, dist + 4); break;
-    case 'Digit9': sink = Math.max(0, sink - 0.5); break;
-    case 'Digit0': sink += 0.5; break;
+    // Unclamped in both directions. Up is the water column — the shallows have 42
+    // units of it and the reef 82 — and down is the old `sink`, burying a
+    // flat-bottomed model so a slope cannot show daylight under it.
+    case 'Digit9': lift += 0.5; break;
+    case 'Digit0': lift -= 0.5; break;
     case 'Enter':     erasing ? erase() : place(); break;
     case 'Backspace': e.preventDefault(); undo(); break;
     case 'Backslash': copyExport(); break;

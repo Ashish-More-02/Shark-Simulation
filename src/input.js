@@ -30,6 +30,26 @@ export function setInputSuspended(v) {
   }
 }
 
+// ---- ARROW CAPTURE ---------------------------------------------------------
+// The placement editor (F4) rotates its ghost with the arrow keys, and the arrows
+// are also aliases for steering — so without this, aiming a prop would swim the
+// shark and drag the brush point out from under what you were aiming at.
+//
+// Narrower than `suspended` on purpose: the editor NEEDS the shark drivable,
+// because swimming is how you aim the brush. Only the four arrows go quiet, and
+// WASD keeps every axis they were an alias for. Nothing is lost.
+let arrowsCaptured = false;
+
+export function setArrowsCaptured(v) {
+  arrowsCaptured = v;
+  // Cleared on BOTH edges, because an arrow held across either one is latched in
+  // `keys` with its keyup landing on the other side of the switch: held into the
+  // editor it would steer the moment you left, and held out of it, immediately.
+  keys['ArrowUp'] = keys['ArrowDown'] = keys['ArrowLeft'] = keys['ArrowRight'] = false;
+}
+
+const arrow = (code) => !arrowsCaptured && keys[code];
+
 let mouseYaw = 0, mousePitch = 0;
 addEventListener('mousemove', (e) => {
   if (suspended || document.pointerLockElement !== canvas) return;
@@ -64,7 +84,7 @@ export function capturePointer() {
 // -1 / 0 / +1 axes, so the shark module never names key codes itself.
 export function turnAxis() {
   if (suspended) return 0;
-  return (keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0) - (keys['KeyD'] || keys['ArrowRight'] ? 1 : 0);
+  return (keys['KeyA'] || arrow('ArrowLeft') ? 1 : 0) - (keys['KeyD'] || arrow('ArrowRight') ? 1 : 0);
 }
 
 // Rise / dive. E used to be dive; it opens the menu now (see Docs/systems/menu.md),
@@ -79,7 +99,7 @@ export function pitchAxis() {
 
 export function thrustAxis() {
   if (suspended) return 0;
-  return (keys['KeyW'] || keys['ArrowUp'] ? 1 : 0) - (keys['KeyS'] || keys['ArrowDown'] ? 1 : 0);
+  return (keys['KeyW'] || arrow('ArrowUp') ? 1 : 0) - (keys['KeyS'] || arrow('ArrowDown') ? 1 : 0);
 }
 
 export function boosting() {
