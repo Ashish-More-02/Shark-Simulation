@@ -415,6 +415,9 @@ undecided. This roadmap stays a summary and links out.
   shark's health, and the whale as the first mob that fights back
 - [systems/progression.md](systems/progression.md) — points from eating, and the
   upgrade levels they buy: what each one costs and what it does to the world
+- [knowledge/graphics-101.md](knowledge/graphics-101.md) — how real-time rendering
+  actually costs money: draw calls, fill rate, overdraw, culling, and where
+  WebGL vs WebGPU fits. The *why* behind PERFORMANCE.md's *what*
 - Planned: `echolocation.md`, `dispositions.md`, `death-and-respawn.md`,
   `codex.md`, `story-spine.md`
 
