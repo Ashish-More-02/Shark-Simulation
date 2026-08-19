@@ -3,8 +3,46 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Deep Ocean Shark</title>
+
+  <title>Deep Ocean Shark — swim the Mariana Trench</title>
+  <meta name="description" content="A deep-sea exploration sim you play in the browser. Ten levels of ocean, each one deeper than the last, ending on the floor of the Challenger Deep. Nothing is locked — the dark is just stronger than you are. Playable demo, no install." />
+  <meta name="theme-color" content="#04121f" />
+  <link rel="canonical" href="https://ashish-more-02.github.io/Shark-Simulation/" />
+
+  <meta property="og:url" content="https://ashish-more-02.github.io/Shark-Simulation/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Deep Ocean Shark" />
+  <meta property="og:description" content="A deep-sea exploration sim in your browser. Ten levels down, ending on the floor of the Challenger Deep." />
+  <meta property="og:image" content="https://ashish-more-02.github.io/Shark-Simulation/assets/landing_page/og-image.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="A lone shark descending into black water through a single column of sunlight." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Deep Ocean Shark" />
+  <meta name="twitter:description" content="A deep-sea exploration sim in your browser. Ten levels down, ending on the floor of the Challenger Deep." />
+  <meta name="twitter:image" content="https://ashish-more-02.github.io/Shark-Simulation/assets/landing_page/og-image.jpg" />
+
+  <link rel="icon" href="assets/landing_page/favicon.png" type="image/png" sizes="64x64" />
+  <link rel="apple-touch-icon" href="assets/landing_page/apple-touch-icon.png" />
+
+  <!-- The hero is one 36 KB plate. It is the whole first paint, so it is fetched
+       at high priority and nothing else above the fold competes with it. -->
+  <link rel="preload" as="image" href="assets/landing_page/hero-dive.webp" fetchpriority="high" />
+
+  <!-- ORDER MATTERS. style.css is the GAME's sheet and it sets
+       `html, body { height: 100%; overflow: hidden }` — correct for a canvas that
+       fills the window, fatal for a page you scroll. landing.css loads second and
+       re-opens the scroll with `html:not(.playing)`, so the game's own rules snap
+       back the moment .playing lands on <html>. See src/landing_page/landing.js. -->
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="src/landing_page/landing.css" />
+
+  <!-- Reveal gate. The scroll-up animations are declared under `html.lp-js`, so
+       this one line is what hides them — which means a blocked or broken module
+       load leaves a fully readable page instead of a blank one. It has to run
+       before first paint, so it is inline and classic, not deferred. -->
+  <script>document.documentElement.classList.add('lp-js');</script>
+
   <script type="importmap">
   {
     "imports": {
@@ -15,6 +53,539 @@
   </script>
 </head>
 <body>
+
+<!-- ============================================================
+     THE MARKETING SHELL. Everything in here is hidden the instant a
+     "Dive in" button is pressed; #game below is revealed in its place.
+
+     A note on the copy, because it is a deliberate constraint rather than an
+     oversight: this page shows and withholds. No prey price list, no upgrade
+     costs, no stat blocks, no creature roster. Eight of the ten levels are
+     redacted on purpose. Everything here is a reason to open the game, and
+     nothing here is a substitute for opening it.
+     ============================================================ -->
+<div id="landing" class="lp">
+
+  <div class="lp-grain" aria-hidden="true"></div>
+
+  <a class="lp-skip" href="#descent">Skip to the descent</a>
+
+  <header class="lp-nav">
+    <a class="lp-mark" href="#top" aria-label="Deep Ocean Shark — top of page">
+      <svg viewBox="0 0 40 30" aria-hidden="true" focusable="false">
+        <!-- The favicon's mark, redrawn as a path: a dorsal fin cutting the
+             waterline. Same identity in the tab and in the header. -->
+        <path d="M14.6 4.2c5.9 3.3 10.2 9.1 12.6 15.4H12.9c1.4-3.6 2-9.3 1.7-15.4z"/>
+        <rect x="2" y="19.6" width="36" height="3.6" rx="1.2"/>
+      </svg>
+      <span>Deep Ocean Shark</span>
+    </a>
+    <nav class="lp-nav-links" aria-label="Sections">
+      <a href="#descent">The descent</a>
+      <a href="#downthere">Down there</a>
+      <a href="#gameplay">Gameplay</a>
+      <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub</a>
+    </nav>
+    <button type="button" class="lp-btn lp-btn-sm lp-play" data-play>Dive in</button>
+  </header>
+
+  <main>
+
+    <!-- ==================== HERO ====================
+         Centred, symmetrical, and built on one generated plate rather than on
+         footage: a single shark dropping into a column of light says
+         "exploration" in a way a gameplay clip cannot. The plate is dead still —
+         it held a scroll parallax once, and the drift was small enough that all
+         it bought was a rAF loop running in front of a WebGL game. The
+         expedition slate under the title is the only hard information on the
+         whole screen. -->
+    <section class="lp-hero" id="top">
+      <img class="lp-hero-plate"
+           src="assets/landing_page/hero-dive.webp" width="1344" height="768"
+           decoding="async" fetchpriority="high"
+           alt="A lone shark far below the surface, descending into black water through a single wide column of sunlight." />
+      <div class="lp-hero-wash" aria-hidden="true"></div>
+
+      <div class="lp-hero-body">
+        <p class="lp-eyebrow lp-eyebrow-center">
+          <span class="lp-dot" aria-hidden="true"></span> Playable demo · work in progress
+        </p>
+
+        <h1 class="lp-title">
+          <span class="lp-title-a">Deep Ocean</span>
+          <span class="lp-title-b">Shark</span>
+        </h1>
+
+        <p class="lp-hook">The ocean does not hand anything over.<br />You go down and you take it.</p>
+
+        <div class="lp-hero-cta">
+          <button type="button" class="lp-btn lp-btn-lg lp-play" data-play>
+            Dive in
+            <span class="lp-btn-sub">plays in your browser · no install</span>
+          </button>
+          <p class="lp-desktop-note" role="note">
+            <strong>Best on desktop.</strong> Keyboard, mouse and a real GPU —
+            open this on a laptop and go under.
+          </p>
+        </div>
+      </div>
+
+      <!-- The expedition slate. Reads like the header of a dive log, and it is
+           the whole factual budget of the hero: where, how deep, how much of it
+           exists, what it was built with. -->
+      <dl class="lp-slate">
+        <div><dt>Position</dt><dd>Mariana Trench, W. Pacific</dd></div>
+        <div><dt>Floor</dt><dd>10,935 m</dd></div>
+        <div><dt>Charted</dt><dd>2 of 10 levels</dd></div>
+        <div><dt>Engine</dt><dd>Three.js · WebGL</dd></div>
+      </dl>
+
+      <div class="lp-gauge" aria-hidden="true">
+        <span class="lp-gauge-label">descend</span>
+        <div class="lp-gauge-rail"><i class="lp-gauge-bead"></i></div>
+      </div>
+    </section>
+
+    <!-- ==================== THE PREMISE ====================
+         One plate, one sentence. This is the whole pitch and it is under thirty
+         words on purpose. -->
+    <section class="lp-band" id="premise" aria-labelledby="premise-h">
+      <img class="lp-band-bg" src="assets/landing_page/plate-surface.webp"
+           width="1344" height="768" loading="lazy" decoding="async"
+           alt="Sunlight fanning down through open blue water toward a dim reef ridge far below." />
+      <div class="lp-band-wash" aria-hidden="true"></div>
+      <div class="lp-wrap lp-band-body lp-reveal">
+        <p class="lp-eyebrow">The premise</p>
+        <h2 id="premise-h" class="lp-h2">You are not the<br />top of this food chain.</h2>
+        <p class="lp-lede">Not yet. Hunt, grow, go deeper than you went last time. That is the whole loop, and the ocean is the only thing keeping score.</p>
+      </div>
+    </section>
+
+    <!-- ==================== THE DESCENT ====================
+         The signature section, and the one place the page deliberately refuses
+         to explain itself. Two levels are named because two levels exist. The
+         other eight get their depth band and a redaction bar — a sounding chart
+         with soundings missing is the honest way to draw an unbuilt world, and
+         it is a better hook than a feature list would have been. -->
+    <section class="lp-descent" id="descent" data-descent aria-labelledby="descent-h">
+      <div class="lp-descent-sky" aria-hidden="true"></div>
+      <!-- The floor, pinned to the bottom of the section and masked in from
+           nothing. Purely atmospheric — alt="" because it carries no information
+           the redacted rows above it don't already carry. It sits earlier in the
+           DOM than .lp-levels so the rows paint on top of it. -->
+      <img class="lp-descent-floor" src="assets/landing_page/plate-abyss.webp"
+           width="1344" height="768" loading="lazy" decoding="async" alt="" />
+
+      <div class="lp-wrap lp-descent-head lp-reveal">
+        <p class="lp-eyebrow">Ten levels, laid end to end</p>
+        <h2 id="descent-h" class="lp-h2">Depth is the whole game</h2>
+        <p class="lp-lede">
+          Nothing is locked and nothing needs a key. What keeps you out of the
+          dark is that the dark kills you — until it doesn't.
+        </p>
+      </div>
+
+      <div class="lp-depth-gauge" aria-hidden="true">
+        <span class="lp-depth-val" data-depth-val>0</span><span class="lp-depth-unit">m</span>
+        <span class="lp-depth-bar"><i data-depth-bar></i></span>
+        <span class="lp-depth-press" data-depth-press>1 bar</span>
+      </div>
+
+      <ol class="lp-levels" data-levels>
+        <li class="lp-level lp-reveal" data-depth="50" data-press="6">
+          <span class="lp-level-n">01</span>
+          <div class="lp-level-body">
+            <h3>The Shallows <span class="lp-tag lp-tag-live">playable</span></h3>
+            <p class="lp-level-zone">Open sand, full sun, and a wall of peaks with one way through it.</p>
+          </div>
+          <p class="lp-level-depth">0–50 m</p>
+        </li>
+        <li class="lp-level lp-reveal" data-depth="200" data-press="21">
+          <span class="lp-level-n">02</span>
+          <div class="lp-level-body">
+            <h3>The Reef <span class="lp-tag lp-tag-live">playable</span></h3>
+            <p class="lp-level-zone">Deeper, denser, and something down here is bigger than you.</p>
+          </div>
+          <p class="lp-level-depth">50–200 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="500" data-press="51">
+          <span class="lp-level-n">03</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">Unsurveyed</p>
+          </div>
+          <p class="lp-level-depth">200–500 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="1000" data-press="101">
+          <span class="lp-level-n">04</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">The last of the light</p>
+          </div>
+          <p class="lp-level-depth">500–1,000 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="1800" data-press="181">
+          <span class="lp-level-n">05</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">Unsurveyed</p>
+          </div>
+          <p class="lp-level-depth">1,000–1,800 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="3000" data-press="301">
+          <span class="lp-level-n">06</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">Unsurveyed</p>
+          </div>
+          <p class="lp-level-depth">1,800–3,000 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="4000" data-press="401">
+          <span class="lp-level-n">07</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">No shark on record has gone past the bottom of this one</p>
+          </div>
+          <p class="lp-level-depth">3,000–4,000 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="6000" data-press="601">
+          <span class="lp-level-n">08</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">Unsurveyed</p>
+          </div>
+          <p class="lp-level-depth">4,000–6,000 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-reveal" data-depth="8000" data-press="801">
+          <span class="lp-level-n">09</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">Unsurveyed</p>
+          </div>
+          <p class="lp-level-depth">6,000–8,000 m</p>
+        </li>
+        <li class="lp-level lp-level-dark lp-level-last lp-reveal" data-depth="10935" data-press="1090">
+          <span class="lp-level-n">10</span>
+          <div class="lp-level-body">
+            <h3><span class="lp-redact lp-redact-long" aria-label="not yet surveyed"></span></h3>
+            <p class="lp-level-zone lp-level-quiet">The floor. Whatever you came for is on it.</p>
+          </div>
+          <p class="lp-level-depth">8,000–10,935 m</p>
+        </li>
+      </ol>
+
+      <div class="lp-wrap lp-descent-foot lp-reveal">
+        <p class="lp-caption">
+          A real place, at real depths: the western Pacific, Guam south-west to the
+          southern end of the Mariana Trench. <strong>Levels one and two are built
+          and playable now.</strong> The other eight are charted, not swum.
+        </p>
+      </div>
+    </section>
+
+    <!-- ==================== DOWN THERE ====================
+         Three plates, three short lines. No stats, no names, no hit points —
+         the job of this section is to make the dark feel occupied. -->
+    <section class="lp-sec lp-sec-dark" id="downthere" aria-labelledby="down-h">
+      <div class="lp-wrap">
+        <div class="lp-sec-head lp-reveal">
+          <p class="lp-eyebrow">Down there</p>
+          <h2 id="down-h" class="lp-h2">You are not alone in it</h2>
+        </div>
+
+        <div class="lp-plates">
+          <figure class="lp-plate lp-reveal">
+            <img src="assets/landing_page/card-canyon.webp" width="1000" height="730"
+                 loading="lazy" decoding="async"
+                 alt="A narrow submarine canyon, sheer rock walls either side, dim light raking down into blue-black water." />
+            <figcaption><b>The way down</b><span>A cleft in the wall, and thirty-five metres of dark on the other side.</span></figcaption>
+          </figure>
+          <figure class="lp-plate lp-reveal">
+            <img src="assets/landing_page/card-whale.webp" width="1000" height="730"
+                 loading="lazy" decoding="async"
+                 alt="The vast silhouette of a humpback whale passing overhead, backlit through dim blue light." />
+            <figcaption><b>It fights back</b><span>Bite something that big and it turns on you. Early on, it wins.</span></figcaption>
+          </figure>
+          <figure class="lp-plate lp-reveal">
+            <img src="assets/landing_page/card-angler.webp" width="1000" height="730"
+                 loading="lazy" decoding="async"
+                 alt="A single cyan bioluminescent lure glowing in total darkness, the faint jaw of an anglerfish behind it." />
+            <figcaption><b>Something is lit</b><span>Down where nothing else is. It is not lit for your benefit.</span></figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== GAMEPLAY ====================
+         The honesty section, and the only place on the page where nothing is
+         painted: one minute of uncut play, then frames straight out of the build.
+         It is a horizontal filmstrip rather than a grid because a strip lets every
+         item keep its own aspect ratio at one shared height, and because "there is
+         more of this than fits on your screen" is the right impression to leave.
+
+         The track starts flush against the left edge of the window on purpose:
+         a card cut off by the window says "there is more of this" better than any
+         caption could.
+
+         Native scrolling does the work — scroll-snap for the feel, a tabbable
+         role="region" so keyboard users get arrow keys for free, and the two
+         arrows under the track as a mouse convenience on top of that. -->
+    <section class="lp-sec lp-sec-dark" id="gameplay" aria-labelledby="gp-h">
+      <div class="lp-wrap">
+        <div class="lp-sec-head lp-gp-head lp-reveal">
+          <p class="lp-eyebrow">Gameplay</p>
+          <h2 id="gp-h" class="lp-h2">What it looks like from inside</h2>
+          <p class="lp-lede">Nothing on this row is concept art. One minute of uncut play, and frames pulled straight out of the build.</p>
+        </div>
+      </div>
+
+      <div class="lp-strip" data-strip role="region" aria-label="Gameplay footage and screenshots — scrollable" tabindex="0">
+
+        <!-- Item 1: the clip. preload="none" and no autoplay, so the 5 MB is not
+             fetched until somebody presses the button. `controls` is on from the
+             start for keyboard and AT users; the overlay button removes itself on
+             first play, which uncovers them. -->
+        <figure class="lp-shot lp-shot-film">
+          <div class="lp-shot-media">
+            <video data-strip-video
+                   poster="assets/landing_page/poster.jpg"
+                   width="1208" height="728"
+                   controls playsinline preload="none">
+              <source src="assets/landing_page/gameplay.mp4" type="video/mp4" />
+              Your browser cannot play this clip — the screenshots either side of it
+              show the same thing.
+            </video>
+            <button class="lp-shot-play" type="button" data-strip-play>
+              <span class="lp-shot-play-ring" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+              </span>
+              <span class="lp-shot-play-label">Play <b>1:00</b> of real play</span>
+            </button>
+          </div>
+          <figcaption><b>Uncut</b> One minute on the reef — hunting, boosting, and a whale that does not care.</figcaption>
+        </figure>
+
+        <figure class="lp-shot">
+          <div class="lp-shot-media">
+            <button class="lp-shot-open" type="button" data-shot-open aria-haspopup="dialog">
+              <img src="assets/landing_page/shot-game-a.webp" width="930" height="528"
+                   loading="lazy" decoding="async"
+                   alt="Gameplay: the shark low over a reef of purple and red coral, a manta ray gliding past, dark mountain peaks behind." />
+            </button>
+          </div>
+          <figcaption><b>The reef floor</b> Coral, kelp and a manta ray that will hit back if you start it.</figcaption>
+        </figure>
+
+        <figure class="lp-shot">
+          <div class="lp-shot-media">
+            <button class="lp-shot-open" type="button" data-shot-open aria-haspopup="dialog">
+              <img src="assets/landing_page/shot-game-b.webp" width="930" height="528"
+                   loading="lazy" decoding="async"
+                   alt="Gameplay: a whale crossing overhead with its health bar showing, the shark below it, and a floating readout saying fish eaten, plus 2 points, plus 1 health." />
+            </button>
+          </div>
+          <figcaption><b>Everything reports</b> Health, depth, points, and a bearing to the nearest big animal.</figcaption>
+        </figure>
+
+        <figure class="lp-shot">
+          <div class="lp-shot-media">
+            <button class="lp-shot-open" type="button" data-shot-open aria-haspopup="dialog">
+              <img src="assets/landing_page/shot-level-1.webp" width="1472" height="920"
+                   loading="lazy" decoding="async"
+                   alt="The Shallows: an open sand plain with kelp and boulders, ringed by dark mountain peaks, a whale in the middle distance." />
+            </button>
+          </div>
+          <figcaption><b>Level one</b> The Shallows. Open ground, and one way through the wall.</figcaption>
+        </figure>
+
+        <figure class="lp-shot">
+          <div class="lp-shot-media">
+            <button class="lp-shot-open" type="button" data-shot-open aria-haspopup="dialog">
+              <img src="assets/landing_page/shot-level-2.webp" width="1472" height="920"
+                   loading="lazy" decoding="async"
+                   alt="The Reef: the shark cruising a dense coral basin in dark blue water, HUD readouts down the left edge." />
+            </button>
+          </div>
+          <figcaption><b>Level two</b> The Reef. Deeper, denser, and it is where the whales live.</figcaption>
+        </figure>
+
+      </div>
+
+      <!-- The arrows sit UNDER the track, below its scrollbar, so nothing
+           competes with the strip's own left edge and the thumb stays the
+           primary indicator of how much is left to see. They are a mouse
+           convenience only — the track itself is tabbable and takes arrow
+           keys, which is what makes them safe to hide on touch. -->
+      <div class="lp-wrap">
+        <div class="lp-strip-nav">
+          <button type="button" data-strip-prev aria-label="Scroll the gallery left">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button type="button" data-strip-next aria-label="Scroll the gallery right">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- ---- THE VIEWER ----
+           A real <dialog>, opened with showModal(), because the platform then
+           hands over the three things a hand-rolled overlay has to reimplement
+           badly: the top layer (so no z-index fight with the fixed nav or the
+           grain), a focus trap, and Esc to close. It lives inside #landing so the
+           handoff to the game hides it along with everything else, and landing.js
+           closes it on the way out.
+
+           One <img>, swapped in place rather than ten stacked slides — the shots
+           are already in the page and decoded, so there is nothing to preload and
+           nothing to animate between. The clip is deliberately NOT in here: it
+           has its own player in the strip. -->
+      <dialog class="lp-lightbox" data-lightbox aria-label="Gameplay screenshots, enlarged">
+        <button class="lp-lightbox-x" type="button" data-lightbox-close aria-label="Close the viewer">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
+
+        <figure class="lp-lightbox-figure">
+          <img data-lightbox-img alt="" decoding="async" />
+          <figcaption data-lightbox-cap></figcaption>
+        </figure>
+
+        <div class="lp-lightbox-nav">
+          <button type="button" data-lightbox-prev aria-label="Previous screenshot">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p class="lp-lightbox-count" aria-live="polite">
+            <span data-lightbox-i>1</span> <span aria-hidden="true">/</span> <span data-lightbox-n>4</span>
+          </p>
+          <button type="button" data-lightbox-next aria-label="Next screenshot">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </dialog>
+    </section>
+
+    <!-- ==================== RUNS ON EVERY DEVICE ====================
+         The distribution argument, made with three device shots on transparent
+         backgrounds so the hardware floats on the page rather than sitting in
+         boxes. It follows the gameplay strip because the strip has just proved
+         the game is real; this section's only job is to say where it goes.
+
+         Deliberately short on detail. This is a landing page, not a spec sheet —
+         the visitor wants to know "will this work for me", and the answer is one
+         word. Desktop is live today; the two handhelds carry a "launching soon"
+         pill and nothing more. -->
+    <section class="lp-sec lp-sec-devices" id="devices" aria-labelledby="dev-h">
+      <div class="lp-wrap">
+        <div class="lp-sec-head lp-devices-head lp-reveal">
+          <p class="lp-eyebrow">One link, every screen</p>
+          <h2 id="dev-h" class="lp-h2">Runs on every device</h2>
+          <p class="lp-lede">
+            Nothing to download, nothing to install, no store page to wait on.
+            Open a link and you are in the water.
+          </p>
+        </div>
+
+        <ul class="lp-devices">
+          <li class="lp-device lp-reveal">
+            <div class="lp-device-media">
+              <img src="assets/landing_page/shot-macbook.webp" width="1602" height="920"
+                   loading="lazy" decoding="async"
+                   alt="Deep Ocean Shark running full-screen in a browser on a MacBook Air." />
+            </div>
+            <div class="lp-device-body">
+              <h3>Laptop &amp; desktop <span class="lp-tag lp-tag-live">play now</span></h3>
+              <p>Full-size ocean in a browser tab, on Mac, Windows or Linux.</p>
+            </div>
+          </li>
+
+          <li class="lp-device lp-reveal">
+            <div class="lp-device-media">
+              <img src="assets/landing_page/shot-steamdeck.webp" width="2308" height="920"
+                   loading="lazy" decoding="async"
+                   alt="Deep Ocean Shark shown on a Steam Deck's screen." />
+            </div>
+            <div class="lp-device-body">
+              <h3>Steam Deck <span class="lp-tag">launching soon</span></h3>
+              <p>The whole trench in your hands, sticks and triggers included.</p>
+            </div>
+          </li>
+
+          <li class="lp-device lp-reveal">
+            <div class="lp-device-media">
+              <img src="assets/landing_page/shot-switch.webp" width="2519" height="1077"
+                   loading="lazy" decoding="async"
+                   alt="Deep Ocean Shark shown on a Nintendo Switch's screen." />
+            </div>
+            <div class="lp-device-body">
+              <h3>Nintendo Switch <span class="lp-tag">launching soon</span></h3>
+              <p>Docked on the big screen or handheld under a blanket.</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ==================== GET IN ====================
+         Controls, because expectations have to be set, and the last CTA. Six keys
+         is the entire input surface — anything more belongs in the game. -->
+    <section class="lp-final" id="play" aria-labelledby="play-h">
+      <div class="lp-wrap lp-final-body lp-reveal">
+        <h2 id="play-h" class="lp-h2 lp-h2-xl">Get in the water.</h2>
+        <p class="lp-lede">Two levels are built. It loads on click, and it does not ask you to install anything.</p>
+
+        <dl class="lp-keys">
+          <div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Swim</dd></div>
+          <div><dt><kbd>Space</kbd><kbd>Ctrl</kbd></dt><dd>Rise, dive</dd></div>
+          <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
+          <div><dt><kbd>Click</kbd></dt><dd>Bite</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd>Your shark, in 3D</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Free the cursor</dd></div>
+        </dl>
+
+        <div class="lp-hero-cta">
+          <button type="button" class="lp-btn lp-btn-lg lp-play" data-play>
+            Dive in
+            <span class="lp-btn-sub">~60 fps · no install</span>
+          </button>
+          <p class="lp-desktop-note" role="note">
+            <strong>Best on desktop.</strong> Keyboard and mouse only — come back on a laptop.
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="lp-footer">
+    <div class="lp-wrap">
+      <div class="lp-footer-top">
+        <a class="lp-mark" href="#top" aria-label="Deep Ocean Shark — top of page">
+          <svg viewBox="0 0 40 30" aria-hidden="true" focusable="false">
+            <path d="M14.6 4.2c5.9 3.3 10.2 9.1 12.6 15.4H12.9c1.4-3.6 2-9.3 1.7-15.4z"/>
+            <rect x="2" y="19.6" width="36" height="3.6" rx="1.2"/>
+          </svg>
+          <span>Deep Ocean Shark</span>
+        </a>
+        <nav class="lp-footer-links" aria-label="Elsewhere">
+          <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub repository</a>
+          <button type="button" class="lp-ghost lp-play" data-play>Dive in</button>
+        </nav>
+      </div>
+      <p class="lp-credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent) &nbsp;·&nbsp; audio CC0 via Freesound (Fission9) &amp; OpenGameArt</p>
+      <!-- The asset attribution above stays: the models are CC-BY and naming the
+           authors is the licence, not a courtesy. This line is just the copyright. -->
+      <p class="lp-credit lp-copyright">&copy; 2026 Ashish More &nbsp;·&nbsp; Deep Ocean Shark</p>
+    </div>
+  </footer>
+</div>
+
+<!-- ============================================================
+     THE GAME. Byte-for-byte the markup that used to be the whole of this file,
+     wrapped in #game and hidden until a play button asks for it. `hidden` on the
+     wrapper is display: none, which keeps the canvas out of layout AND stops
+     every fixed overlay inside from rendering. Nothing in here has a transform,
+     so the overlays' position: fixed still resolves against the viewport.
+     ============================================================ -->
+<div id="game" hidden>
   <canvas id="scene"></canvas>
 
   <!-- HUD -->
@@ -63,6 +634,11 @@
 
   <button id="mute" aria-label="Mute audio">🔊</button>
 
+  <!-- The escape hatch back to the landing page. A reload is the only honest way
+       out: it tears down the WebGL context, the audio graph and the pointer lock
+       in one go, and there is nothing to un-wire by hand. -->
+  <button id="lp-exit" type="button">← Back to the site</button>
+
   <!-- Start / loading screen -->
   <div id="start">
     <div class="panel">
@@ -89,7 +665,8 @@
     </div>
     <div class="credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent) &nbsp;·&nbsp; audio CC0 via Freesound (Fission9) &amp; OpenGameArt</div>
   </div>
+</div>
 
-  <script type="module" src="main.js"></script>
+<script type="module" src="src/landing_page/landing.js"></script>
 </body>
 </html>

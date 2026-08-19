@@ -1,0 +1,1127 @@
+/* ============================================================
+   DEEP OCEAN SHARK — landing page.
+
+   Loaded AFTER the game's style.css, on purpose. That sheet owns
+   `html, body { height: 100%; overflow: hidden }` because it is dressing a
+   canvas that fills the window; this one has to undo exactly that for as long
+   as the visitor is reading rather than playing. The undo is written as
+   `html:not(.playing)` rather than as a plain `html` override so it does not
+   depend on which sheet the browser happened to parse last: landing.js puts
+   `.playing` on <html> when the game boots, and the game's own rules take back
+   over at that moment. See src/landing_page/landing.js.
+
+   Everything else is namespaced under .lp so nothing leaks into the game's HUD,
+   menu or start screen — the two designs share a page but not a selector.
+   ============================================================ */
+
+/* ---- THE SCROLL SWITCH --------------------------------------------------- */
+html:not(.playing),
+html:not(.playing) body {
+  height: auto;
+  overflow: visible;
+}
+/* Belt and braces against a stray horizontal scrollbar. `clip` rather than
+   `hidden` on purpose: `hidden` would make the body a scroll container, and a
+   scroll container that isn't the one actually scrolling breaks every
+   position: sticky inside it. */
+html:not(.playing) body { overflow-x: clip; }
+html:not(.playing) { scroll-behavior: smooth; }
+/* The gutter is reserved whether or not the scrollbar is showing, so that the
+   lightbox can take the page's scroll away (html.lp-zoom, further down) without
+   the whole layout jumping sideways by a scrollbar's width. */
+html:not(.playing) { scrollbar-gutter: stable; }
+@media (prefers-reduced-motion: reduce) {
+  html:not(.playing) { scroll-behavior: auto; }
+}
+
+/* The marketing shell and the game are mutually exclusive; both use the `hidden`
+   attribute, and #game gets pinned to the viewport so the canvas lands exactly
+   where it used to. No transform / filter / contain on this wrapper — any of
+   those would become the containing block for the HUD's position: fixed. */
+#game { position: fixed; inset: 0; z-index: 1; }
+#landing[hidden], #game[hidden] { display: none !important; }
+
+/* ============================================================
+   TOKENS
+   ============================================================ */
+.lp {
+  --abyss: #01060c;
+  --deep: #04121f;
+  --surface: rgba(122, 200, 255, 0.06);
+  --line: rgba(122, 200, 255, 0.15);
+  --line-strong: rgba(122, 200, 255, 0.32);
+  --ink: #eef8ff;
+  --dim: #9dbdd4;
+  --dimmer: #7f9fb5;
+  --accent: #4ce3d4;
+  --accent-ink: #032420;
+
+  --wrap: 1200px;
+  --pad: clamp(20px, 5vw, 64px);
+  --r: 14px;
+
+  --t-eyebrow: clamp(10.5px, 0.6vw + 8px, 12.5px);
+  --t-body: clamp(15px, 0.4vw + 13.5px, 17px);
+  --t-lede: clamp(17px, 0.8vw + 14px, 22px);
+  --t-h2: clamp(30px, 3.4vw + 14px, 60px);
+
+  position: relative;
+  z-index: 2;
+  background: var(--deep);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: var(--t-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
+/* :where() so the reset carries ZERO specificity — otherwise `.lp img` (one
+   class + one type) outranks every `.lp-*-plate` rule that has to size a
+   full-bleed image, and every one of them silently reverts to height: auto. */
+:where(.lp) :where(img, video) { display: block; max-width: 100%; height: auto; }
+.lp a { color: inherit; text-decoration: none; }
+.lp p { margin: 0; }
+.lp h1, .lp h2, .lp h3 { margin: 0; font-weight: 800; letter-spacing: -0.02em; line-height: 1.06; }
+/* :where() for the same reason as the media reset above. `.lp ol` is one class
+   plus one type, which outranked `.lp-levels`'s own `margin-inline: auto` and
+   `padding-inline` — the ten-level chart lost its centring to this line and sat
+   hard against the left edge of the window. */
+:where(.lp) :where(ul, ol, dl) { margin: 0; padding: 0; list-style: none; }
+.lp strong { color: var(--ink); font-weight: 700; }
+
+.lp :focus-visible,
+#lp-exit:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+.lp-wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--pad); }
+
+/* ---- GRAIN ----
+   One fixed layer of SVG fractal noise, inlined as a data URI so it costs no
+   request. As much about killing the banding big dark gradients get on 8-bit
+   panels as about the texture. */
+.lp-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.lp-skip {
+  position: fixed;
+  top: 8px; left: 8px;
+  z-index: 60;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+  transform: translateY(-180%);
+  transition: transform 0.18s ease;
+}
+.lp-skip:focus-visible { transform: none; }
+
+/* ============================================================
+   NAV
+   ============================================================ */
+/* A floating glass pill rather than a full-width bar. It is centred with
+   translateX(-50%) instead of `inset: 0` + margin so its width can stay
+   fit-content — a pill that spans the window is just a bar with round ends.
+
+   The glass is three layers doing three jobs: the blur samples the page behind
+   it, the translucent fill keeps white text legible over the bright top of the
+   hero, and the inset hairline is the specular top edge that makes it read as a
+   pane of glass rather than a grey rectangle. */
+.lp-nav {
+  position: fixed;
+  top: clamp(10px, 1.6vh, 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  /* space-between rather than auto margins, so the CTA holds the right end
+     whether or not the links are there — they drop out under 780px, and an auto
+     margin would have left the button stranded mid-pill. */
+  justify-content: space-between;
+  gap: clamp(12px, 3vw, 40px);
+  /* A wide pill, not a fit-content one: at 1250px it reads as a piece of
+     furniture rather than a floating chip, and it still clears the window on a
+     laptop. min() rather than width + max-width so there is one number to move. */
+  width: min(1250px, calc(100vw - clamp(16px, 4vw, 40px)));
+  padding: 9px 12px 9px clamp(14px, 2vw, 22px);
+  border: 1px solid rgba(122, 200, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(4, 18, 31, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 235, 255, 0.14),
+    0 12px 40px rgba(1, 6, 12, 0.5);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+/* Fallback for the handful of engines without backdrop-filter: without the blur
+   the 0.55 fill is far too sheer to read text over. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lp-nav { background: rgba(3, 13, 23, 0.92); }
+}
+.lp-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.01em; }
+.lp-mark svg { width: 26px; height: 20px; fill: var(--accent); flex: none; }
+.lp-mark span { font-size: 15px; white-space: nowrap; }
+.lp-nav-links { display: flex; gap: clamp(14px, 2vw, 28px); font-size: 14px; color: var(--dim); }
+.lp-nav-links a { transition: color 0.16s ease; }
+.lp-nav-links a:hover { color: var(--accent); }
+@media (max-width: 780px) { .lp-nav-links { display: none; } }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.lp-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: inherit;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.lp-btn:hover { background: #6cf0e3; transform: translateY(-2px); box-shadow: 0 14px 34px rgba(76, 227, 212, 0.3); }
+.lp-btn:active { transform: none; }
+.lp-btn-sm { padding: 9px 18px; font-size: 13.5px; }
+.lp-btn-lg { padding: 18px 44px; font-size: clamp(16px, 0.6vw + 14px, 19px); }
+.lp-btn-sub { font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.7; }
+
+.lp-ghost {
+  display: inline-block;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line-strong);
+  background: none;
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.lp-ghost:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Mobile does not get a dead play button — the note takes its place. Two
+   triggers: a narrow window, and any device whose primary pointer can't hover. */
+.lp-desktop-note { display: none; }
+@media (max-width: 820px), (hover: none) and (pointer: coarse) {
+  .lp-play { display: none !important; }
+  .lp-desktop-note {
+    display: block;
+    max-width: 34ch;
+    padding: 14px 18px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--dim);
+    font-size: 14.5px;
+    line-height: 1.5;
+    text-align: left;
+  }
+  .lp-hero .lp-desktop-note { margin-inline: auto; }
+}
+
+/* ============================================================
+   SHARED FURNITURE
+   ============================================================ */
+.lp-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: var(--t-eyebrow);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.lp-eyebrow-center { justify-content: center; }
+.lp-dot {
+  width: 7px; height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(76, 227, 212, 0.6);
+  animation: lp-pulse 2.6s ease-out infinite;
+}
+@keyframes lp-pulse { 70%, 100% { box-shadow: 0 0 0 9px rgba(76, 227, 212, 0); } }
+
+.lp-h2 { font-size: var(--t-h2); }
+.lp-h2-xl { font-size: clamp(38px, 5vw + 14px, 88px); }
+.lp-lede { max-width: 56ch; color: var(--dim); font-size: var(--t-lede); line-height: 1.5; }
+.lp-caption { max-width: 66ch; color: var(--dimmer); font-size: 14.5px; line-height: 1.6; }
+
+.lp-sec { padding-block: clamp(76px, 12vh, 160px); }
+.lp-sec-dark { background: linear-gradient(180deg, var(--abyss), var(--deep) 55%); }
+.lp-sec-head { display: grid; gap: 14px; margin-bottom: clamp(34px, 5vh, 62px); }
+
+.lp kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 3px 8px;
+  margin: 0 2px 0 0;
+  background: rgba(140, 210, 255, 0.12);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.8em;
+  font-weight: 700;
+}
+
+/* ============================================================
+   HERO
+   Centred and symmetrical, built on one generated plate. The plate is an <img>
+   rather than a background so it gets fetchpriority and a real alt; it is
+   oversized by the parallax scale so the drift never exposes an edge.
+   ============================================================ */
+.lp-hero {
+  position: relative;
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: clamp(110px, 16vh, 170px) 0 clamp(96px, 15vh, 150px);
+  overflow: hidden;
+  isolation: isolate;
+  text-align: center;
+}
+.lp-hero-plate {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lp-hero-wash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(76% 58% at 50% 46%, rgba(1, 6, 12, 0.78), rgba(1, 6, 12, 0.18) 72%),
+    linear-gradient(180deg, rgba(1, 6, 12, 0.82) 0%, rgba(1, 6, 12, 0.1) 26%, rgba(1, 6, 12, 0.5) 64%, var(--deep) 100%);
+}
+.lp-hero-body {
+  display: grid;
+  justify-items: center;
+  gap: clamp(14px, 2.2vh, 24px);
+  max-width: var(--wrap);
+  padding-inline: var(--pad);
+}
+
+/* The lockup: a wide-tracked line over one enormous word. */
+.lp-title { display: grid; gap: clamp(4px, 1vh, 12px); }
+.lp-title-a {
+  display: block;
+  color: var(--accent);
+  font-size: clamp(13px, 1.5vw + 6px, 26px);
+  font-weight: 700;
+  letter-spacing: 0.44em;
+  /* letter-spacing leaves a trailing gap after the final glyph, so centring the
+     inline box parks the glyphs half a tracking-unit left of true centre. The
+     negative right margin widens the content box by exactly that gap, which
+     moves the centre back by half of it — the line now sits optically centred
+     over the word beneath it. */
+  margin-right: -0.44em;
+  text-transform: uppercase;
+}
+.lp-title-b {
+  display: block;
+  font-size: clamp(62px, 16vw, 212px);
+  font-weight: 800;
+  line-height: 0.82;
+  letter-spacing: -0.045em;
+  text-transform: uppercase;
+  text-shadow: 0 0 90px rgba(76, 227, 212, 0.22), 0 6px 50px rgba(1, 6, 12, 0.8);
+}
+.lp-hook { max-width: 44ch; color: var(--dim); font-size: var(--t-lede); line-height: 1.45; }
+.lp-hero-cta { display: grid; justify-items: center; gap: 16px; margin-top: clamp(6px, 1.4vh, 16px); }
+
+/* The expedition slate — the hero's entire factual budget. */
+.lp-slate {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(34px, 6vh, 62px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(18px, 4vw, 56px);
+  width: 100%;
+  max-width: var(--wrap);
+  padding: clamp(16px, 2.4vh, 24px) var(--pad) 0;
+  border-top: 1px solid var(--line);
+}
+.lp-slate dt {
+  color: var(--dimmer);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.lp-slate dd { margin: 4px 0 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .lp-slate { position: static; transform: none; left: auto; bottom: auto; margin-top: clamp(28px, 5vh, 48px); }
+  .lp-slate div { min-width: 40%; }
+}
+
+.lp-gauge {
+  position: absolute;
+  right: var(--pad);
+  bottom: clamp(120px, 18vh, 190px);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+.lp-gauge-label {
+  color: var(--dimmer);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+}
+.lp-gauge-rail {
+  position: relative;
+  width: 1px;
+  height: clamp(64px, 10vh, 104px);
+  /* Tick marks as one repeating gradient: no elements, one paint. */
+  background: repeating-linear-gradient(180deg, var(--line-strong) 0 1px, transparent 1px 8px);
+}
+.lp-gauge-bead {
+  position: absolute;
+  left: 50%;
+  width: 5px; height: 5px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
+  animation: lp-bead 2.4s ease-in-out infinite;
+}
+@keyframes lp-bead {
+  0%   { top: 0; opacity: 0; }
+  25%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+@media (max-width: 1000px) { .lp-gauge { display: none; } }
+
+/* ============================================================
+   FULL-BLEED BAND (the premise)
+   ============================================================ */
+.lp-band {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: min(88svh, 760px);
+  padding-block: clamp(76px, 12vh, 150px);
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--abyss);
+}
+.lp-band-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.9) brightness(0.62);
+}
+.lp-band-wash {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(105% 100% at 4% 55%, rgba(1, 6, 12, 0.95), rgba(1, 6, 12, 0.08) 66%),
+    linear-gradient(180deg, var(--deep) 0%, rgba(1, 6, 12, 0) 20%, rgba(1, 6, 12, 0) 76%, var(--abyss) 100%);
+}
+.lp-band-body { display: grid; gap: clamp(14px, 2.4vh, 24px); }
+
+/* ============================================================
+   THE DESCENT — the signature section.
+   The darkening is one tall gradient on the section itself, so it is correct
+   with JavaScript off, under reduced motion, and while scrolling fast. JS only
+   writes the numbers in the sticky gauge.
+   ============================================================ */
+.lp-descent {
+  position: relative;
+  padding-block: clamp(76px, 12vh, 160px) clamp(96px, 15vh, 200px);
+  background: linear-gradient(180deg,
+    #0a2b45 0%,
+    #072338 13%,
+    #051a2c 28%,
+    #041322 44%,
+    #030d18 60%,
+    #020810 78%,
+    #000306 100%);
+}
+.lp-descent-sky {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 44vh;
+  pointer-events: none;
+  /* The last of the surface light, raking down into level one. */
+  background:
+    radial-gradient(90% 100% at 28% -12%, rgba(120, 226, 255, 0.17), rgba(120, 226, 255, 0) 60%),
+    radial-gradient(60% 90% at 78% -14%, rgba(76, 227, 212, 0.12), rgba(76, 227, 212, 0) 58%);
+}
+/* The trench floor, faded in under the redacted rows so the section arrives
+   somewhere instead of merely getting darker. */
+.lp-descent-floor {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 0;
+  width: 100%;
+  height: min(70vh, 700px);
+  object-fit: cover;
+  opacity: 0.85;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 55%);
+}
+
+/* Head and foot are centred while the sounding rows below them stay a
+   left-aligned chart — the copy is an address to the reader, the rows are data.
+   justify-items does the centring rather than margin-inline: auto so the
+   max-width on .lp-lede / .lp-caption survives untouched. */
+.lp-descent-head, .lp-descent-foot {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.lp-descent-head .lp-eyebrow, .lp-descent-foot .lp-eyebrow { justify-content: center; }
+.lp-descent-head { margin-bottom: clamp(38px, 6vh, 76px); }
+.lp-descent-foot { margin-top: clamp(34px, 5vh, 64px); }
+
+.lp-depth-gauge {
+  position: sticky;
+  top: 66px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: fit-content;
+  max-width: calc(100% - var(--pad) * 2);
+  margin: 0 auto clamp(-56px, -4vh, -28px);
+  padding: 9px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(1, 6, 12, 0.74);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-variant-numeric: tabular-nums;
+}
+.lp-depth-val { color: var(--accent); font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+.lp-depth-unit { margin-left: -7px; color: var(--dim); font-size: 12px; font-weight: 700; }
+.lp-depth-bar { width: clamp(56px, 13vw, 140px); height: 2px; background: var(--line-strong); }
+.lp-depth-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+.lp-depth-press { color: var(--dimmer); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.lp-levels { position: relative; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--pad); display: grid; }
+.lp-level {
+  display: grid;
+  grid-template-columns: clamp(50px, 7vw, 92px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(14px, 3vw, 40px);
+  padding-block: clamp(20px, 3.2vh, 32px);
+  border-top: 1px solid var(--line);
+}
+.lp-level-last { border-bottom: 1px solid var(--line-strong); }
+.lp-level-n {
+  color: var(--dimmer);
+  font-size: clamp(26px, 3.6vw + 8px, 56px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+.lp-level:hover .lp-level-n { color: var(--accent); }
+.lp-level-body { display: grid; gap: 6px; }
+.lp-level-body h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: clamp(18px, 0.9vw + 14px, 23px); }
+.lp-level-zone { color: var(--dim); font-size: 14.5px; line-height: 1.5; }
+.lp-level-depth {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The eight levels that are charted rather than built read quieter than the two
+   that exist — the section should look like a chart with soundings missing. */
+.lp-level-dark .lp-level-n { color: rgba(122, 200, 255, 0.26); }
+.lp-level-dark .lp-level-depth { color: var(--dim); font-weight: 600; }
+.lp-level-quiet { color: var(--dimmer); font-size: 13.5px; font-style: italic; }
+
+/* A redaction bar where the name would be. */
+.lp-redact {
+  display: block;
+  width: clamp(110px, 20vw, 230px);
+  height: clamp(15px, 1.4vw + 8px, 20px);
+  border: 1px solid rgba(122, 200, 255, 0.14);
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(122, 200, 255, 0.1) 0 5px,
+      rgba(122, 200, 255, 0.03) 5px 10px);
+}
+.lp-redact-long { width: clamp(150px, 28vw, 320px); }
+
+.lp-tag {
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.lp-tag-live { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 760px) {
+  .lp-level { grid-template-columns: clamp(38px, 10vw, 58px) minmax(0, 1fr); }
+  .lp-level-depth { grid-column: 2; }
+}
+
+/* ============================================================
+   DOWN THERE — three plates, captions over the image
+   ============================================================ */
+.lp-plates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 14px;
+}
+.lp-plate {
+  position: relative;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--abyss);
+  transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), border-color 0.45s ease;
+}
+.lp-plate img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.45s ease;
+  filter: brightness(0.9);
+}
+.lp-plate:hover { transform: translateY(-4px); border-color: var(--line-strong); }
+.lp-plate:hover img { transform: scale(1.04); filter: brightness(1.04); }
+.lp-plate figcaption {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: grid;
+  gap: 6px;
+  padding: clamp(20px, 2.4vw, 30px);
+  background: linear-gradient(180deg, rgba(1, 6, 12, 0) 0%, rgba(1, 6, 12, 0.82) 46%, rgba(1, 6, 12, 0.96) 100%);
+}
+.lp-plate figcaption b { font-size: clamp(18px, 0.9vw + 14px, 23px); font-weight: 800; letter-spacing: -0.02em; }
+.lp-plate figcaption span { color: var(--dim); font-size: 14px; line-height: 1.5; }
+@media (max-width: 700px) { .lp-plate img { aspect-ratio: 4 / 3; } }
+
+/* ============================================================
+   GAMEPLAY — the horizontal filmstrip
+
+   Every item keeps its own aspect ratio at ONE shared media height, which is
+   why the stills were all resized on height rather than width. Native scrolling
+   does the work: scroll-snap for the feel, and the track is a tabbable
+   role="region" so keyboard users get arrow-key scrolling for free. The two
+   buttons below the track are a mouse convenience layered on top, not the
+   mechanism.
+   ============================================================ */
+.lp-gp-head { margin-bottom: clamp(28px, 4vh, 48px); }
+
+/* Below the track and its scrollbar, centred on the window. The track itself is
+   flush left and asymmetric by design, so centring the arrows is what stops the
+   whole block from leaning — they read as a control for the page, not for the
+   left-hand card. */
+.lp-strip-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: clamp(14px, 2vh, 20px);
+}
+.lp-strip-nav button {
+  display: grid;
+  place-items: center;
+  width: 42px; height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.lp-strip-nav button svg { width: 18px; height: 18px; }
+.lp-strip-nav button:hover { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* Touch swipes the strip; the arrows would only be in the way. */
+@media (hover: none) and (pointer: coarse) { .lp-strip-nav { display: none; } }
+
+.lp-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  /* The track starts at the window's left edge — the first card is deliberately
+     flush, which is what says "this row continues past your screen". The right
+     gutter still mirrors .lp-wrap's centring maths so scrolling to the end lands
+     the last card on the same line as the heading instead of against the edge.
+     scroll-padding-inline-start is 0 to match, or every snap would leave a gap
+     the resting state does not have. */
+  --gutter: max(var(--pad), calc((100vw - var(--wrap)) / 2 + var(--pad)));
+  padding: 4px var(--gutter) 22px 0;
+  scroll-padding-inline: 0 var(--gutter);
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 200, 255, 0.34) transparent;
+}
+@media (prefers-reduced-motion: reduce) { .lp-strip { scroll-behavior: auto; } }
+.lp-strip::-webkit-scrollbar { height: 9px; }
+.lp-strip::-webkit-scrollbar-track { background: transparent; }
+.lp-strip::-webkit-scrollbar-thumb {
+  /* border + background-clip is the only way to inset a webkit thumb: it keeps a
+     2px gutter either side so the thumb reads as a pill, not a filled channel. */
+  background: rgba(122, 200, 255, 0.3);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+.lp-strip::-webkit-scrollbar-thumb:hover { background: rgba(122, 200, 255, 0.5); background-clip: padding-box; }
+
+.lp-shot {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  margin: 0;
+  /* `start`, not `center`: with mandatory snapping a centred alignment would
+     refuse to let the first card rest flush against the window's left edge,
+     which is the whole point of the track's zero start padding. */
+  scroll-snap-align: start;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--abyss);
+  overflow: hidden;
+  transition: border-color 0.3s ease;
+}
+.lp-shot:hover, .lp-shot:focus-within { border-color: var(--line-strong); }
+.lp-shot-media { position: relative; flex: none; }
+/* max-width: none is load-bearing — the zero-specificity reset caps media at
+   100% of the flex item, which would squash every wide shot to nothing. */
+.lp-shot-media img,
+.lp-shot-media video {
+  display: block;
+  height: clamp(230px, 42vh, 430px);
+  width: auto;
+  max-width: none;
+  background: var(--abyss);
+}
+.lp-shot figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  flex: 1;
+  padding: 13px 18px;
+  border-top: 1px solid var(--line);
+  color: var(--dimmer);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.lp-shot figcaption b { color: var(--ink); font-size: 14px; font-weight: 800; }
+
+/* The click-to-play overlay. It covers the whole poster so the target is the
+   obvious one, and it removes itself on first play — which is what uncovers the
+   video's own native controls underneath. */
+.lp-shot-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  border: 0;
+  background: linear-gradient(180deg, rgba(1, 6, 12, 0.3), rgba(1, 6, 12, 0.62));
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+}
+.lp-shot-play-ring {
+  display: grid;
+  place-items: center;
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 10px 40px rgba(1, 6, 12, 0.6);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.lp-shot-play-ring svg { width: 28px; height: 28px; margin-left: 3px; }
+.lp-shot-play:hover .lp-shot-play-ring { transform: scale(1.07); background: #6cf0e3; }
+.lp-shot-play-label { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.lp-shot-play-label b { color: var(--accent); font-variant-numeric: tabular-nums; }
+.lp-shot-film .lp-shot-media video { cursor: pointer; }
+
+/* The zoom trigger. A real <button> around the img, stripped back to nothing so
+   the card looks untouched — `cursor: zoom-in` is the affordance, and the ring on
+   hover confirms the whole frame is the target rather than some corner icon. */
+.lp-shot-open {
+  display: block;
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: zoom-in;
+}
+.lp-shot-open img { transition: filter 0.2s ease; }
+.lp-shot-open:hover img, .lp-shot-open:focus-visible img { filter: brightness(1.09) saturate(1.04); }
+/* Drawn on the button rather than as a border, so it sits over the image instead
+   of adding a pixel to the card's layout. */
+.lp-shot-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 0 rgba(76, 227, 212, 0);
+  transition: box-shadow 0.2s ease;
+  pointer-events: none;
+}
+.lp-shot-open:hover::after, .lp-shot-open:focus-visible::after {
+  box-shadow: inset 0 0 0 2px rgba(76, 227, 212, 0.65);
+}
+
+/* ============================================================
+   THE LIGHTBOX — a native <dialog> in the top layer
+
+   Almost everything here is undoing the UA's dialog styling: the default is a
+   centred, padded, bordered, auto-sized white box, and what this needs is a
+   transparent full-viewport grid. The full viewport matters for behaviour as
+   well as looks — landing.js closes on a click whose target IS the dialog, which
+   only works if the dialog covers the space around the figure.
+   ============================================================ */
+.lp-lightbox {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: clamp(56px, 8vh, 84px) clamp(12px, 3vw, 40px) clamp(16px, 3vh, 32px);
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  overscroll-behavior: contain;
+}
+/* Scoped to [open] because the UA's `dialog:not([open]) { display: none }` is
+   what keeps a closed dialog closed — an unconditional display would show it. */
+.lp-lightbox[open] {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-content: center;
+  gap: clamp(14px, 2.4vh, 26px);
+}
+.lp-lightbox::backdrop {
+  background: rgba(1, 6, 12, 0.86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.lp-lightbox-figure {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  margin: 0;
+  min-height: 0;   /* lets the 1fr row actually shrink, so the img cap can bite */
+}
+.lp-lightbox-figure img {
+  /* max-width: none is not wanted here — unlike the strip, this image is bounded
+     by the viewport on BOTH axes and letterboxes itself. */
+  width: auto;
+  max-width: 100%;
+  max-height: calc(100vh - clamp(190px, 26vh, 260px));
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--abyss);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  object-fit: contain;
+}
+.lp-lightbox-figure figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0 8px;
+  max-width: 74ch;
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+.lp-lightbox-figure figcaption b { color: var(--ink); font-size: 14.5px; font-weight: 800; }
+
+.lp-lightbox-nav { display: flex; align-items: center; gap: 14px; }
+.lp-lightbox-count {
+  min-width: 5ch;
+  color: var(--dimmer);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* One shared look for the three round controls in here. */
+.lp-lightbox-nav button, .lp-lightbox-x {
+  display: grid;
+  place-items: center;
+  width: 46px; height: 46px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(4, 18, 31, 0.6);
+  color: var(--ink);
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.lp-lightbox-nav button svg, .lp-lightbox-x svg { width: 20px; height: 20px; }
+.lp-lightbox-nav button:hover, .lp-lightbox-x:hover {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.lp-lightbox-x {
+  position: absolute;
+  top: clamp(12px, 2.4vh, 22px);
+  right: clamp(12px, 3vw, 40px);
+}
+
+/* The open animation is one 160ms rise. Reduced motion gets the end state
+   immediately — a modal appearing is information, not decoration. */
+@media (prefers-reduced-motion: no-preference) {
+  .lp-lightbox[open] { animation: lp-zoom-in 0.16s ease-out; }
+  .lp-lightbox[open]::backdrop { animation: lp-fade-in 0.16s ease-out; }
+}
+@keyframes lp-zoom-in { from { opacity: 0; transform: scale(0.985); } }
+@keyframes lp-fade-in { from { opacity: 0; } }
+
+/* Stop the page scrolling underneath the viewer. The gutter is reserved on the
+   scroll container at all times (see the scroll switch at the top of this file),
+   so taking the scrollbar away here costs no reflow. */
+html.lp-zoom:not(.playing) { overflow: hidden; }
+
+@media (max-width: 620px) {
+  .lp-lightbox-figure img { max-height: calc(100vh - clamp(210px, 32vh, 280px)); }
+}
+
+/* ============================================================
+   RUNS ON EVERY DEVICE — three hardware shots, no frames
+
+   The three PNG-alpha device renders carry their own bezels, so the cards here
+   have no border and no card background: the hardware floats on the section's
+   own gradient with one soft pool of light under it. Anything boxier would put
+   a frame around a frame.
+
+   Sizing is by WIDTH, not by height. Constraining the height would render a
+   laptop and a handheld at the same physical size, which reads wrong; letting
+   each fill the column width and bottom-align in a fixed-height bay keeps the
+   MacBook visibly the biggest object on the row, which is true.
+   ============================================================ */
+.lp-sec-devices {
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--deep), #031525 60%, var(--deep));
+}
+.lp-devices-head { max-width: 62ch; }
+
+.lp-devices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: clamp(26px, 3vw, 44px) clamp(20px, 2.6vw, 38px);
+}
+.lp-device { display: grid; gap: 18px; }
+
+.lp-device-media {
+  position: relative;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  min-height: clamp(140px, 17vw, 215px);
+}
+/* The pool of light. Sits behind the render and is sized off the bay rather
+   than the image so all three read as lit by the same source. No negative
+   z-index — that would drop it behind the section's own background; the img is
+   position: relative instead, which is enough to lift it over an absolutely
+   positioned sibling that precedes it in the tree. */
+.lp-device-media::before {
+  content: "";
+  position: absolute;
+  inset: auto 0 -14px 0;
+  height: 76%;
+  background: radial-gradient(58% 50% at 50% 100%,
+    rgba(76, 227, 212, 0.16), rgba(76, 227, 212, 0) 70%);
+  pointer-events: none;
+}
+.lp-device-media img {
+  position: relative;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 18px 34px rgba(1, 6, 12, 0.55));
+}
+
+.lp-device-body { display: grid; gap: 7px; }
+.lp-device-body h3 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: clamp(17px, 0.8vw + 14px, 21px);
+}
+.lp-device-body p { color: var(--dim); font-size: 14.5px; line-height: 1.55; }
+
+/* One column of full-width renders is better than three cramped ones — below
+   this the hardware stops being legible at a third of the screen. */
+@media (max-width: 700px) {
+  .lp-devices { grid-template-columns: 1fr; gap: clamp(34px, 6vh, 52px); }
+  .lp-device-media { min-height: 0; }
+}
+
+/* ============================================================
+   GET IN — last CTA, copy left, device right
+   ============================================================ */
+.lp-final {
+  padding-block: clamp(86px, 14vh, 180px);
+  background:
+    radial-gradient(70% 60% at 18% 110%, rgba(76, 227, 212, 0.15), rgba(76, 227, 212, 0) 62%),
+    linear-gradient(180deg, var(--deep), var(--abyss));
+}
+.lp-final { text-align: center; }
+.lp-final-body {
+  margin-inline: auto;
+  display: grid;
+  justify-items: center;
+  gap: clamp(16px, 2.4vh, 26px);
+  max-width: 800px;
+}
+.lp-final-body .lp-keys { width: 100%; text-align: left; }
+.lp-final-body .lp-hero-cta { margin-top: 6px; }
+
+.lp-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--line);
+  overflow: hidden;
+}
+.lp-keys > div { display: grid; gap: 7px; padding: 14px 16px; background: var(--deep); }
+.lp-keys dt { display: flex; flex-wrap: wrap; gap: 2px; }
+.lp-keys dd { margin: 0; color: var(--dim); font-size: 13.5px; }
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.lp-footer { padding-block: clamp(40px, 6vh, 72px); background: var(--abyss); border-top: 1px solid var(--line); }
+.lp-footer-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.lp-footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: clamp(16px, 3vw, 30px); margin-left: auto; }
+.lp-footer-links a {
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line-strong);
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 600;
+}
+.lp-footer-links a:hover { color: var(--accent); border-color: var(--accent); }
+.lp-credit { max-width: 92ch; color: var(--dimmer); font-size: 12.5px; line-height: 1.7; }
+.lp-credit + .lp-credit { margin-top: 8px; color: rgba(127, 159, 181, 0.72); }
+/* The copyright is the last line on the page, so it gets a rule above it and a
+   little more air than the licence text it follows. Two classes deep on purpose:
+   `.lp-credit + .lp-credit` above is also two, and it would otherwise win the
+   margin-top. */
+.lp-credit.lp-copyright {
+  margin-top: clamp(16px, 2.4vh, 24px);
+  padding-top: clamp(14px, 2vh, 20px);
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ============================================================
+   SCROLL REVEALS
+   Hidden only when JS is present (html.lp-js, set by the inline head script), so
+   a failed module load leaves a readable page rather than a blank one.
+   ============================================================ */
+html.lp-js .lp-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+}
+html.lp-js .lp-reveal.is-in { opacity: 1; transform: none; will-change: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.lp-js .lp-reveal { opacity: 1; transform: none; transition: none; }
+  .lp-dot, .lp-gauge-bead { animation: none; }
+  .lp-hero-plate { transform: scale(1.02); }
+  .lp-btn:hover, .lp-plate:hover { transform: none; }
+  .lp-plate:hover img { transform: none; }
+  .lp *, .lp *::before, .lp *::after { transition-duration: 0.01ms !important; }
+}
+
+/* ============================================================
+   THE GAME'S ESCAPE HATCH
+   Lives inside #game, so it is styled here rather than in style.css — the game
+   proper has no such button and should not grow one. Parked left of #mute.
+   ============================================================ */
+#lp-exit {
+  position: fixed;
+  top: clamp(10px, 1.6vh, 18px);
+  /* #mute's own right inset + its width + a gap, so the two never collide at any
+     viewport height. See style.css #mute. */
+  right: calc(clamp(10px, 1.6vw, 18px) + clamp(36px, 4.6vh, 44px) + 10px);
+  z-index: 40;
+  padding: 8px 14px;
+  border: 1px solid rgba(120, 200, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(4, 22, 38, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #cfe9fb;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+#lp-exit:hover { background: rgba(4, 22, 38, 0.82); color: #4ce3d4; }
