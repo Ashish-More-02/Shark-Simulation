@@ -1,0 +1,325 @@
+/* ============================================================
+   DEEP OCEAN SHARK — the start menu.   pages/game/start-menu.css
+
+   This screen used to be its own document and the flow was landing -> menu ->
+   game. That was one screen too many: the game page then had
+   to show a SECOND gate ("Dive In") before play, because pointer lock and audio
+   both need a user gesture in the document that uses them, and the click that
+   pressed "Start game" could not be carried across a navigation.
+
+   So the menu moved into the game's document instead of in front of it. It is now
+   #start — the overlay that was always there — restyled from the inside. Nothing
+   about the boot sequence changed to make that work: main.js already calls
+   buildWorld() on load and waits for #dive, so the ocean downloads and assembles
+   while the player is still reading the controls, and the single "Start game"
+   press IS the gesture. One screen, one click, no second gate.
+
+   The sheet is separate from game.css and the selectors are disjoint: this file
+   owns #start and everything inside it, game.css owns the canvas and the HUD drawn
+   over it. game.css loads first because it carries the page reset.
+
+   Namespaced .ms-* for the parts. The four ids in here — #start, #loading,
+   #controls, #dive — are the contract with src/hud.js and cannot be renamed.
+   ============================================================ */
+
+/* ---- THE OVERLAY ----
+   Fixed and scrolling, because the controls block makes this the tallest screen
+   in the game and a 560px-tall window is real. z-index 10 puts it over the canvas
+   and under the E menu (20) and the escape hatch (40). */
+#start {
+  /* Tokens live on #start rather than :root so they cannot leak into the HUD,
+     which has its own palette in game.css. They mirror landing.css's token block —
+     that duplication is the contract between the two sheets; change a colour here
+     and change it there. */
+  --line: rgba(122, 200, 255, 0.15);
+  --line-strong: rgba(122, 200, 255, 0.32);
+  --ink: #eef8ff;
+  --dim: #9dbdd4;
+  --dimmer: #7f9fb5;
+  --accent: #4ce3d4;
+  --r: 14px;
+
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: clamp(24px, 5vh, 56px) clamp(14px, 4vw, 40px) clamp(52px, 9vh, 76px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 200, 255, 0.32) transparent;
+  color: #eef8ff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* hud.js adds .gone rather than removing the node, so the fade has something to
+     animate and the focused button can still hold focus on the way out. */
+  transition: opacity 0.6s ease;
+}
+#start.gone { opacity: 0; pointer-events: none; }
+
+#start::-webkit-scrollbar { width: 9px; height: 9px; }
+#start::-webkit-scrollbar-track { background: transparent; }
+#start::-webkit-scrollbar-thumb {
+  background: rgba(120, 200, 255, 0.3);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+#start::-webkit-scrollbar-thumb:hover { background: rgba(120, 200, 255, 0.5); background-clip: padding-box; }
+
+#start h1, #start h2 { margin: 0; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+#start p { margin: 0; }
+#start dl { margin: 0; }
+#start a { color: inherit; text-decoration: none; }
+#start strong { color: var(--ink); font-weight: 700; }
+/* The outline keeps its specificity: nothing else in here draws one and it must
+   not be possible to lose. The RADIUS is only a fallback for elements that carry
+   none of their own, so it goes in a :where() and costs ZERO specificity.
+   Written as one plain rule, `#start :focus-visible` is an id plus a class — it
+   outranked `.ms-btn`'s border-radius: 999px, so the moment start-menu.js focused
+   Start (which it does as soon as buildWorld() resolves) the pill collapsed into a
+   10px box, and clicking anywhere else "fixed" it by taking the focus away. */
+#start :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:where(#start :focus-visible) { border-radius: 10px; }
+
+/* ---- BACKDROP ----
+   The landing page's hero plate, so arriving here it is already in cache. Fixed,
+   not absolute: the card scrolls on a short window and the scenery should stay
+   put underneath it rather than sliding away. */
+.ms-plate {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* A radial to sink the middle so white text holds over the bright column of
+   light, and a linear to land the edges on the page colour. */
+.ms-wash {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(68% 56% at 50% 44%, rgba(1, 6, 12, 0.9), rgba(1, 6, 12, 0.42) 74%),
+    linear-gradient(180deg, rgba(1, 6, 12, 0.72) 0%, rgba(1, 6, 12, 0.4) 34%, rgba(4, 18, 31, 0.9) 100%);
+}
+
+/* ---- THE CARD ----
+   One glass pane, and the only object on the screen, so it gets to be generous.
+   margin: auto rather than the grid's place-items doing the centring: an auto
+   margin collapses to zero the moment the content is taller than the scroll box,
+   so a tall card starts at the top and scrolls down instead of overflowing
+   equally in both directions — the overflow above a scroll container's top edge
+   is unreachable, no scrollbar goes there. */
+.ms-card {
+  margin: auto;
+  width: 100%;
+  max-width: 660px;
+  display: grid;
+  justify-items: center;
+  gap: clamp(16px, 2.8vh, 30px);
+  padding: clamp(24px, 4.4vh, 44px) clamp(20px, 4vw, 44px);
+  border: 1px solid rgba(122, 200, 255, 0.16);
+  border-radius: 26px;
+  background: rgba(4, 18, 31, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 235, 255, 0.13),
+    0 30px 90px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  text-align: center;
+}
+/* Without the blur the 0.62 fill is too sheer to read the controls text over. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ms-card { background: rgba(3, 14, 25, 0.94); }
+}
+
+.ms-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.ms-dot {
+  width: 7px; height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(76, 227, 212, 0.6);
+  animation: ms-pulse 2.6s ease-out infinite;
+}
+@keyframes ms-pulse { 70%, 100% { box-shadow: 0 0 0 9px rgba(76, 227, 212, 0); } }
+
+.ms-title { font-size: clamp(30px, 5vw + 12px, 54px); }
+.ms-title span { color: var(--accent); }
+
+/* ---- ACTIONS ----
+   Two options, stacked. Stacked rather than side by side because they are not
+   peers: one is the reason the page exists and the other is a way out, and a row
+   would give them equal weight. */
+.ms-actions {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+}
+.ms-btn {
+  display: grid;
+  gap: 3px;
+  padding: 15px 26px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease,
+              color 0.18s ease, border-color 0.18s ease;
+}
+.ms-btn-label { font-size: 17px; }
+.ms-btn-sub { font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.72; }
+
+/* #controls is a wrapper that exists only so hud.js has something to unhide. It
+   must pass the grid stretch straight through to the button, or Start would
+   shrink to its text while "Go to homepage" stayed full width. */
+#controls { display: grid; }
+
+/* #dive is a <button>, so it needs the type reset an <a> gets for free. The text
+   is pure black rather than the deep-green ink the landing page used to share
+   with it: on the accent fill, black is what actually reads. */
+#dive.ms-btn-go {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+#dive.ms-btn-go:hover {
+  background: #6cf0e3;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(76, 227, 212, 0.32);
+}
+#dive.ms-btn-go:active { transform: none; }
+
+.ms-btn-quiet { background: none; border-color: var(--line-strong); color: var(--dim); }
+.ms-btn-quiet:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Keyboard selection, driven by menu.js. Drawn as a ring rather than a fill so it
+   stacks with the hover state instead of fighting it. */
+.ms-btn.is-on { box-shadow: 0 0 0 2px var(--accent), 0 14px 34px rgba(76, 227, 212, 0.18); }
+
+/* ---- THE LOADING PLACEHOLDER ----
+   #loading sits in the Start button's slot and is shaped like it — same padding,
+   same radius, same line height — so when hud.js swaps one for the other on
+   showControls() the card does not jump. It is the honest state: the ocean really
+   is downloading and assembling while this is up. */
+#loading {
+  padding: 15px 26px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  color: var(--dim);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  animation: ms-breathe 2.2s ease-in-out infinite;
+}
+@keyframes ms-breathe { 50% { opacity: 0.55; } }
+
+/* ---- CONTROLS ----
+   The paragraph carries the meaning and the grid carries the keys — the same
+   split, and the same 1px-gap grid, as the landing page's "Get in the water"
+   section, so a player who read it there recognises it here. */
+.ms-controls {
+  width: 100%;
+  display: grid;
+  gap: 13px;
+  padding-top: clamp(16px, 2.6vh, 24px);
+  border-top: 1px solid var(--line);
+}
+.ms-controls-h {
+  color: var(--dimmer);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.ms-note { color: var(--dim); font-size: 14px; line-height: 1.6; text-align: left; }
+
+/* gap: 1px over a lit background is the divider — no per-cell borders to get the
+   corners wrong, and overflow: hidden rounds the whole block. */
+.ms-keys {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--line);
+  overflow: hidden;
+  text-align: left;
+}
+.ms-keys > div { display: grid; gap: 6px; padding: 12px 14px; background: rgba(4, 18, 31, 0.86); }
+.ms-keys dt { display: flex; flex-wrap: wrap; gap: 2px; }
+.ms-keys dd { margin: 0; color: var(--dim); font-size: 13px; }
+#start kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 3px 8px;
+  margin: 0 2px 0 0;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: rgba(140, 210, 255, 0.12);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ---- CREDIT ----
+   Pinned to the WINDOW rather than to the end of the scrollable content, so it
+   stays a footer instead of becoming the last thing you scroll to. It fades out
+   with the overlay because #start carries no transform and so is not a containing
+   block for it. The gradient is the overlap guard: when the card is scrolling its
+   bottom edge passes under this line. */
+.credit {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  padding: 14px 12px clamp(10px, 1.6vh, 16px);
+  background: linear-gradient(180deg, rgba(1, 8, 15, 0), rgba(1, 8, 15, 0.92) 55%);
+  color: #3d6d8c;
+  font-size: clamp(10px, calc(0.5vh + 7px), 12px);
+  line-height: 1.5;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+/* ---- SHORT WINDOWS ----
+   A landscape phone, or a laptop with devtools open. The card gives up its own
+   chrome before the content does, and the credit line goes: at this height it
+   would be a meaningful fraction of the window. */
+@media (max-height: 720px) {
+  .ms-card { gap: clamp(12px, 2vh, 20px); padding: 20px clamp(18px, 4vw, 34px); }
+  .ms-eyebrow { display: none; }
+}
+@media (max-height: 560px) {
+  #start { padding-bottom: 16px; }
+  .ms-title { font-size: clamp(24px, 4vw + 10px, 34px); }
+  .ms-note { font-size: 13px; }
+  .credit { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ms-dot, #loading { animation: none; }
+  .ms-btn:hover { transform: none; }
+  #start *, #start *::before, #start *::after { transition-duration: 0.01ms !important; }
+}

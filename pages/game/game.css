@@ -1,3 +1,15 @@
+/* ============================================================
+   DEEP OCEAN SHARK — the game.   pages/game/game.css
+
+   The canvas and everything drawn on top of it: HUD, reticle, stamina ring,
+   health bar, damage vignette, death banner, the E menu, and the escape hatch.
+
+   It does NOT style the start menu. That screen is #start, it is the first thing
+   the player sees on this page, and it belongs to start-menu.css — same document,
+   separate sheet, disjoint selectors. This file owns the page reset below, so it
+   is the one that loads first.
+   ============================================================ */
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
@@ -13,8 +25,8 @@ html, body {
 .hidden { display: none !important; }
 
 /* ---- SCROLLABLE SURFACES ---------------------------------------------------
-   Two panels in this game grow with their CONTENT rather than with the window —
-   the start screen's control list and the menu's cards — and both used to be
+   The E menu's cards grow with their CONTENT rather than with the window, and
+   used to be
    sized as a fraction of the viewport and clipped at the edge. On a 1366x768
    laptop that is not a cosmetic problem: the thing that falls off the bottom is
    the "Dive In" button, or the last stat and its + button. So every panel that
@@ -23,17 +35,14 @@ html, body {
 
    overscroll-behavior: contain matters here too — without it a flick past the
    end of the stat list scroll-chains into the page behind. */
-#start, .ctrls, .menu-body, .menu-card {
+.menu-body, .menu-card {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 200, 255, 0.32) transparent;
   -webkit-overflow-scrolling: touch;
 }
-#start::-webkit-scrollbar, .ctrls::-webkit-scrollbar,
 .menu-body::-webkit-scrollbar, .menu-card::-webkit-scrollbar { width: 9px; height: 9px; }
-#start::-webkit-scrollbar-track, .ctrls::-webkit-scrollbar-track,
 .menu-body::-webkit-scrollbar-track, .menu-card::-webkit-scrollbar-track { background: transparent; }
-#start::-webkit-scrollbar-thumb, .ctrls::-webkit-scrollbar-thumb,
 .menu-body::-webkit-scrollbar-thumb, .menu-card::-webkit-scrollbar-thumb {
   /* border + background-clip is the only way to inset a webkit thumb: it keeps a
      2px gutter either side so the thumb reads as a pill, not a filled channel. */
@@ -42,7 +51,6 @@ html, body {
   border: 2px solid transparent;
   border-radius: 999px;
 }
-#start::-webkit-scrollbar-thumb:hover, .ctrls::-webkit-scrollbar-thumb:hover,
 .menu-body::-webkit-scrollbar-thumb:hover, .menu-card::-webkit-scrollbar-thumb:hover {
   background: rgba(120, 200, 255, 0.5);
   background-clip: padding-box;
@@ -455,151 +463,6 @@ html, body {
 }
 #hint b { color: #8fd3ff; }
 
-/* ---- Start screen ----------------------------------------------------------
-   Thirteen lines of controls, a title, a tag line and a button: this panel is
-   the tallest thing in the game and it is the FIRST thing anyone sees, so it is
-   also the one place where running out of room is unforgivable. It is laid out
-   in three layers of defence, outermost first:
-
-     1. #start itself scrolls. The last resort — a window too short for even the
-        title and the button still reaches all of it.
-     2. .panel is capped at the viewport height and is a flex column, so
-     3. .ctrls (the control list, the only part that is arbitrarily long) takes
-        the squeeze and scrolls INSIDE the panel.
-
-   Layer 3 is the one that matters: it keeps "Dive In" nailed to the bottom of
-   the panel at every window size, so the button is never the thing you have to
-   scroll to find. Which is exactly what a fixed-height panel got wrong.
-
-   The vertical centring is `margin: auto` on the panel rather than
-   justify-content, on purpose: a centred flex item in a SCROLLING container
-   overflows equally in both directions and the overflow above the container's
-   top edge is unreachable — no scrollbar goes there. Auto margins collapse to
-   zero the moment the content is taller than the box, so the panel simply
-   starts at the top and scrolls down from there. */
-#start {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Bottom padding reserves the strip the credit line is pinned to. */
-  padding: clamp(14px, 3vh, 40px) clamp(12px, 3vw, 32px) clamp(46px, 8vh, 64px);
-  background:
-    radial-gradient(circle at 50% 30%, rgba(20, 90, 140, 0.55), transparent 60%),
-    linear-gradient(180deg, #06263c 0%, #041322 60%, #01080f 100%);
-  z-index: 10;
-  transition: opacity 0.6s ease;
-}
-#start.gone { opacity: 0; pointer-events: none; }
-
-.panel {
-  /* margin, not justify-content — see the note on #start. */
-  margin: auto;
-  width: 100%;
-  max-width: 460px;
-  /* Cap at the scroll container's height so the list inside is what gives, not
-     the panel. min-height: 0 lets this flex child actually shrink; without it a
-     flex item refuses to go below its content's height and the inner scroll
-     region never gets a chance to appear. */
-  max-height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  text-align: center;
-  padding: clamp(20px, 4vh, 40px) clamp(20px, 4vw, 48px);
-}
-.panel h1 {
-  font-size: clamp(24px, calc(2.4vh + 2.2vw), 40px);
-  line-height: 1.15;
-  letter-spacing: 1px;
-  margin-bottom: 8px;
-}
-.tag { color: #8fb9d6; margin-bottom: clamp(14px, 3vh, 28px); font-size: clamp(13px, calc(0.9vh + 8px), 16px); }
-
-#loading { color: #6fb7e6; font-size: 15px; letter-spacing: 1px; }
-
-/* The panel's flexible middle: the list scrolls, the button below it does not. */
-#controls {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-}
-
-.ctrls {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(7px, 1.4vh, 12px);
-  margin-bottom: clamp(14px, 3vh, 28px);
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Room for the scrollbar, so a thumb never lands on top of the text. */
-  padding-right: 6px;
-  color: #cfe9fb;
-  font-size: clamp(12.5px, calc(0.8vh + 8px), 15px);
-}
-.ctrls div { line-height: 1.5; }
-
-kbd {
-  display: inline-block;
-  min-width: 26px;
-  padding: 3px 8px;
-  margin: 0 2px;
-  background: rgba(140, 210, 255, 0.14);
-  border: 1px solid rgba(140, 210, 255, 0.35);
-  border-bottom-width: 2px;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* flex: none so the button keeps its full height while the list above it is the
-   thing being squeezed, and align-self so it stays button-shaped rather than
-   stretching to the panel's width. */
-#dive {
-  flex: none;
-  align-self: center;
-  padding: clamp(11px, 1.8vh, 14px) clamp(30px, 6vw, 42px);
-  font-size: clamp(15px, calc(1vh + 9px), 17px);
-  font-weight: 700;
-  letter-spacing: 1px;
-  color: #04121f;
-  background: linear-gradient(180deg, #7fe0ff, #34a9e0);
-  border: none;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 8px 30px rgba(52, 169, 224, 0.4);
-}
-#dive:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(52, 169, 224, 0.55); }
-#dive:active { transform: translateY(0); }
-
-/* Pinned to the WINDOW, not to the end of the scrollable content, so it stays a
-   footer instead of turning into the last thing you scroll to. Fixed rather than
-   absolute for that reason — and it still fades out with the start screen, since
-   #start carries no transform and so is not a containing block for it.
-   The gradient is the overlap guard: when the panel is scrolling, its bottom
-   lines pass UNDER this line, and without something opaque behind the text the
-   two would interleave. It fades into #start's own bottom colour. */
-.credit {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 14px 12px clamp(10px, 1.6vh, 16px);
-  background: linear-gradient(180deg, rgba(1, 8, 15, 0), rgba(1, 8, 15, 0.92) 55%);
-  text-align: center;
-  color: #3d6d8c;
-  font-size: clamp(10px, calc(0.5vh + 7px), 12px);
-  line-height: 1.5;
-  letter-spacing: 1px;
-  pointer-events: none;
-}
 
 /* ---- MENU (E) ----
    The game's second screen: shell here, page contents built by src/menu/.
@@ -998,15 +861,6 @@ kbd {
   .menu-page[data-page="shark"] { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr); }
 }
 
-/* Same again for the start screen: the controls list is thirteen lines, so on a
-   short window it is doing the scrolling and the type can afford to tighten
-   rather than the panel's chrome eating into it. */
-@media (max-height: 800px) {
-  .panel { padding-top: clamp(16px, 3vh, 28px); padding-bottom: clamp(16px, 3vh, 28px); }
-  .ctrls { line-height: 1.45; }
-  kbd { padding: 2px 6px; font-size: 12px; min-width: 22px; }
-}
-
 /* ---- Very short: a landscape phone, or a laptop with devtools open ---------
    Below this the tab strip and the title are competing with the body for space
    that is not there. Both give up their own room; the body keeps what is left. */
@@ -1018,7 +872,34 @@ kbd {
   .menu-card { padding: 11px 13px; }
   .menu-card-title { margin-bottom: 9px; }
   .stat-list { gap: 10px; }
-  .panel { padding: 14px 18px; }
-  .credit { display: none; }   /* it would be most of the window */
-  #start { padding-bottom: 14px; }
 }
+
+/* ============================================================
+   THE ESCAPE HATCH — back to the site
+   A plain <a> to /index.html now that the landing page is its own document; it
+   used to be a button that reloaded the single page. Parked left of #mute, and
+   its right inset is derived from #mute's so the two never collide.
+   ============================================================ */
+#lp-exit {
+  position: fixed;
+  top: clamp(10px, 1.6vh, 18px);
+  /* #mute's own right inset + its width + a gap, so the two never collide at any
+     viewport height. See #mute above. */
+  right: calc(clamp(10px, 1.6vw, 18px) + clamp(36px, 4.6vh, 44px) + 10px);
+  z-index: 40;
+  padding: 8px 14px;
+  border: 1px solid rgba(120, 200, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(4, 22, 38, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #cfe9fb;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+#lp-exit:hover { background: rgba(4, 22, 38, 0.82); color: #4ce3d4; }

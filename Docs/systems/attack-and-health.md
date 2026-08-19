@@ -643,7 +643,7 @@ float on each of the shark's materials for 0.22 s, which needs no shader recompi
 `emissive` is an unconditional uniform in three's standard material.
 
 The four new DOM nodes (head bar, damage vignette, target bar, death banner) are
-static markup in `index.html` toggled by class.
+static markup in `pages/game/game.html` toggled by class.
 
 ---
 
@@ -752,8 +752,8 @@ src/
   menu/stats.js  the Health and Attack rows are no longer placeholders
 ```
 
-`index.html` carries `#health` (the head bar), `#damage`, `#death` and the bar inside
-`#biteInfo`. Styles are in `style.css` under *Health bar*, *Damage vignette* and
+`pages/game/game.html` carries `#health` (the head bar), `#damage`, `#death` and the bar
+inside `#biteInfo`. Styles are in `pages/game/game.css` under *Health bar*, *Damage vignette* and
 *Death banner*.
 
 The two boundaries worth keeping: `health.js` is told what "wake at the sanctuary"

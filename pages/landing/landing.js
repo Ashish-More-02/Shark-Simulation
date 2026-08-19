@@ -1,79 +1,30 @@
 // ============================================================
-//  DEEP OCEAN SHARK — landing page behaviour.
+//  DEEP OCEAN SHARK — landing page behaviour.   pages/landing/landing.js
 //
-//  Five jobs, in order of how much they matter:
+//  Four jobs:
 //
-//    1. boot()          hand the page over to the real game, on click, once
-//    2. wireDescent()   the depth readout on the ten-level section
-//    3. wireStrip()     click-to-play and the arrows on the gameplay strip
-//    4. wireLightbox()  the <dialog> that opens a still full-size
-//    5. wireReveals()   IntersectionObserver fade-ups
+//    1. wireDescent()   the depth readout on the ten-level section
+//    2. wireStrip()     click-to-play and the arrows on the gameplay strip
+//    3. wireLightbox()  the <dialog> that opens a still full-size
+//    4. wireReveals()   IntersectionObserver fade-ups
 //
-//  No dependencies, no CDN, no framework. Everything that moves is rAF-driven
-//  and every one of them stops when its section leaves the viewport — the page
-//  is in front of a WebGL game and must not be the thing that costs the frame.
+//  This file used to own a fifth and much bigger job: boot(), which hid the
+//  marketing markup, revealed a #game wrapper in the same document and
+//  dynamically imported main.js. It also carried a teardown registry so every
+//  observer and rAF loop in here could be shut down before the WebGL context came
+//  up. All of it is gone — "Dive in" is an ordinary link to pages/game/game.html
+//  now, and a navigation tears the page down for free. Nothing on this page
+//  competes with a render loop any more.
+//
+//  No dependencies, no CDN, no framework. Every rAF loop is gated on an
+//  IntersectionObserver, so a section that is off screen costs nothing.
 // ============================================================
 
 const doc = document.documentElement;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ============================================================
-//  1. THE HANDOFF
-//
-//  The whole point of the split: Three.js and ~30 .glb files are not fetched
-//  until someone actually asks to play. main.js is imported dynamically, ONCE,
-//  and after that its own start screen / "Dive In" flow takes over untouched.
-// ============================================================
-// Teardown registry. Every observer and rAF loop below pushes its own stopper
-// here, so the handoff can shut the whole marketing page down with one call
-// rather than each section knowing about the game.
-const stoppers = [];
-function stopAll() { while (stoppers.length) stoppers.pop()(); }
-
-const landing = document.getElementById('landing');
-const game = document.getElementById('game');
-let booting = false;
-
-function boot() {
-  if (booting) return;
-  booting = true;
-
-  // Reveal the game BEFORE importing. core.js reads window.innerWidth for the
-  // renderer size and grabs #scene at module scope, so the canvas has to be in
-  // layout by the time that module body runs — a display: none wrapper would
-  // hand it a zero-sized viewport.
-  landing.hidden = true;
-  game.hidden = false;
-  doc.classList.add('playing');       // gives style.css its overflow: hidden back
-  doc.classList.remove('lp-js');
-
-  // Stop everything the marketing page was running.
-  stopAll();
-  window.scrollTo(0, 0);
-
-  import('../../main.js').catch((err) => {
-    console.error('[landing] the game failed to load', err);
-    const loading = document.getElementById('loading');
-    if (loading) loading.textContent = 'The ocean failed to load — check the console.';
-  });
-}
-
-for (const btn of document.querySelectorAll('[data-play]')) {
-  btn.addEventListener('click', boot);
-}
-
-// The escape hatch. A reload is the honest way out: it drops the WebGL context,
-// the audio graph and the pointer lock in one go, with nothing to un-wire by
-// hand. Dropping the hash matters — #play would boot us straight back in.
-document.getElementById('lp-exit')?.addEventListener('click', () => {
-  location.replace(location.pathname + location.search);
-});
-
-// Deep link: /#play boots on arrival, so a "play now" link can skip the page.
-if (location.hash === '#play') boot();
-
-// ============================================================
-//  2. THE DESCENT READOUT
+//  1. THE DESCENT READOUT
 //
 //  Ten rows, each carrying the depth and pressure at the BOTTOM of its band in
 //  data attributes. The gauge reads whichever row is crossing the anchor line
@@ -143,11 +94,10 @@ function wireDescent() {
   }, { rootMargin: '20% 0px' });
 
   io.observe(section);
-  stoppers.push(() => { io.disconnect(); if (raf) cancelAnimationFrame(raf); });
 }
 
 // ============================================================
-//  3. THE GAMEPLAY FILMSTRIP
+//  2. THE GAMEPLAY FILMSTRIP
 //
 //  Two jobs, and deliberately only two — the scrolling itself is native, because
 //  a browser's own scroller beats a hand-rolled one on inertia, snapping,
@@ -189,7 +139,6 @@ function wireStrip() {
       if (!entry.isIntersecting && !video.paused) video.pause();
     }, { root: strip, threshold: 0.2 });
     io.observe(video);
-    stoppers.push(() => { io.disconnect(); video.pause(); });
   }
 
   // One item's worth of scroll, measured live: the shots are all different
@@ -210,7 +159,7 @@ function wireStrip() {
 }
 
 // ============================================================
-//  4. THE LIGHTBOX
+//  3. THE LIGHTBOX
 //
 //  Click a still in the strip and it opens full-size, centred, with arrows to
 //  cycle. A native <dialog> + showModal() rather than a div overlay, which buys
@@ -304,14 +253,10 @@ function wireLightbox(strip) {
     opener = null;
   });
 
-  stoppers.push(() => {
-    doc.classList.remove('lp-zoom');
-    if (box.open) box.close();
-  });
 }
 
 // ============================================================
-//  5. SCROLL REVEALS
+//  4. SCROLL REVEALS
 //  One observer, unobserving as it goes — a reveal fires once and is done.
 // ============================================================
 function wireReveals() {
@@ -330,15 +275,11 @@ function wireReveals() {
   }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
 
   for (const el of targets) io.observe(el);
-  stoppers.push(() => io.disconnect());
 }
 
 // ============================================================
 //  BOOTSTRAP
-//  Skipped entirely if #play already sent us into the game.
 // ============================================================
-if (!booting) {
-  wireDescent();
-  wireStrip();
-  wireReveals();
-}
+wireDescent();
+wireStrip();
+wireReveals();

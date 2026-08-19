@@ -270,13 +270,13 @@ src/menu/
     stub.js          makes the empty Map/Missions/Quests tabs
 ```
 
-`index.html` carries one empty `<div id="menu">`; everything inside it is built by
-`menu.js`. Styles live in `style.css` under `---- MENU ----`.
+`pages/game/game.html` carries one empty `<div id="menu">`; everything inside it is
+built by `menu.js`. Styles live in `pages/game/game.css` under `---- MENU ----`.
 
 ### On hud.js being "the only module that touches the DOM"
 
 It no longer is, and that is intended. `hud.js` remains the only module that
-touches the **HUD** — the fixed set of elements declared in `index.html` and
+touches the **HUD** — the fixed set of elements declared in `pages/game/game.html` and
 written every frame. The menu is a self-contained subsystem whose DOM is its
 entire product, and routing a growing tree of pages through a lookup table in
 `hud.js` would make `hud.js` the thing it exists to prevent. The rule as it now

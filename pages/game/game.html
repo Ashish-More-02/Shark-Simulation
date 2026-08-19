@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Deep Ocean Shark — play</title>
+  <meta name="description" content="Play Deep Ocean Shark in your browser." />
+  <meta name="theme-color" content="#04121f" />
+  <!-- Not a page to rank: it is ~5 MB of models and a WebGL context, and the copy
+       worth indexing is all on /. -->
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="icon" href="../../assets/landing_page/favicon.png" type="image/png" sizes="64x64" />
+  <link rel="apple-touch-icon" href="../../assets/landing_page/apple-touch-icon.png" />
+
+  <!-- The start menu's backdrop is the landing page's hero plate, so arriving from
+       / it is already in cache. It is the whole first paint here either way. -->
+  <link rel="preload" as="image" href="../../assets/landing_page/hero-dive.webp" fetchpriority="high" />
+
+  <!-- Two sheets, disjoint selectors, one document. game.css carries the page
+       reset and the canvas + HUD, so it goes first; start-menu.css owns #start,
+       the screen the player lands on. -->
+  <link rel="stylesheet" href="game.css" />
+  <link rel="stylesheet" href="start-menu.css" />
+
+  <!-- The import map has to be in the document that runs the modules. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+
+<!-- ============================================================
+     THE GAME, AND ITS START MENU. One document, on purpose.
+
+     The menu was briefly its own page and the flow was landing -> menu -> game.
+     That put TWO gates in front of play, because pointer
+     lock and audio each need a user gesture in the document that uses them and a
+     click cannot be carried across a navigation — so pressing "Start game" only
+     ever got you to a second button.
+
+     Merging the two collapses it to one screen and one click, and it needed no
+     change to the boot sequence at all. main.js calls buildWorld() the moment this
+     module runs, then waits on #dive; so the ~5 MB of models download and assemble
+     while the player is still reading the controls, and the single "Start game"
+     press is both the gesture and the go. src/hud.js swaps #loading for #controls
+     when the world is ready, which is what turns the placeholder into the button.
+
+     The four ids that contract with src/hud.js are #start, #loading, #controls and
+     #dive. Everything .ms-* is presentation and lives in start-menu.css.
+
+     Asset urls do NOT resolve against this file. Every path in src/config/config.js
+     is written relative to the repo root and resolved through src/assets.js, which
+     anchors them to its own module url — that is what lets this page sit two
+     directories down without breaking thirty model loads.
+     ============================================================ -->
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-row"><span class="label">HEALTH</span><span id="hp">100 / 100</span></div>
+    <div class="hud-row"><span class="label">DEPTH</span><span id="depth">0 m</span></div>
+    <div class="hud-row"><span class="label">SPEED</span><span id="speed">0 mph</span></div>
+    <div class="hud-row"><span class="label">ORBS</span><span id="orbs">0 / 0</span></div>
+    <div class="hud-row"><span class="label">EATEN</span><span id="eaten">0</span></div>
+    <div class="hud-row"><span class="label">POINTS</span><span id="points">0</span></div>
+    <div class="hud-row"><span class="label">SIZE</span><span id="size">6.0 m</span></div>
+    <div class="hud-row"><span class="label">NEAREST</span><span id="track">—</span></div>
+  </div>
+
+  <!-- In-game menu — toggled with E. Everything inside is built by
+       src/menu/menu.js; the pages live in src/menu/pages/. -->
+  <div id="menu" class="hidden"></div>
+
+  <!-- Perf readout — toggled with F3 (or `). Hidden by default. -->
+  <div id="perf" class="hidden"></div>
+
+  <!-- Placement editor readout — toggled with F4. See src/editor.js. -->
+  <div id="editor" class="hidden"></div>
+
+  <!-- Bite reticle: flashes on a hit, harder on a kill. The bar under the text is
+       the TARGET's remaining health — see showBiteInfo() in src/hud.js. -->
+  <div id="crosshair" class="hidden"></div>
+  <div id="biteInfo"><span id="biteText"></span><div id="biteBar" class="hidden"><i></i></div></div>
+
+  <!-- Boost stamina ring — sits off the shark's left flank. Only up while Shift
+       is held; the fill fraction is the --p custom property, written from hud.js. -->
+  <div id="stamina" class="hidden"></div>
+
+  <!-- Health bar — floats over the shark's head, positioned in SCREEN space from
+       the projected world point (see world.js). Only up for a couple of seconds
+       after your health actually moves. -->
+  <div id="health"><i></i></div>
+
+  <!-- Damage vignette: a red pulse on every hit, held while health is critical. -->
+  <div id="damage"></div>
+
+  <!-- Death banner. Up while the shark drifts, faded as it wakes in the shallows. -->
+  <div id="death"></div>
+
+  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> free cursor</div>
+
+  <button id="mute" aria-label="Mute audio">🔊</button>
+
+  <!-- The escape hatch. A plain link, which is now the honest way out: navigating
+       away drops the WebGL context, the audio graph and the pointer lock in one go,
+       with nothing to un-wire by hand. It used to be a button that reloaded the
+       single page to achieve the same thing. -->
+  <a id="lp-exit" href="../../index.html">← Back to the site</a>
+
+  <!-- ---- THE START MENU ----
+       #start is the overlay; #loading, #controls and #dive are the three ids
+       src/hud.js drives. #loading is up while buildWorld() runs and is shaped like
+       the button that replaces it, so the card does not jump on the swap. -->
+  <div id="start">
+    <img class="ms-plate" src="../../assets/landing_page/hero-dive.webp"
+         width="1344" height="768" decoding="async" fetchpriority="high" alt="" aria-hidden="true" />
+    <div class="ms-wash" aria-hidden="true"></div>
+
+    <div class="ms-card">
+      <p class="ms-eyebrow"><span class="ms-dot" aria-hidden="true"></span> Playable demo · two levels built</p>
+
+      <h1 class="ms-title">Deep Ocean <span>Shark</span></h1>
+
+      <!-- Two options, and deliberately only two. A start screen that offers
+           settings, profiles and a level select before anything has been played is
+           a menu about itself. -->
+      <nav class="ms-actions" data-menu aria-label="Start menu">
+        <p id="loading" aria-live="polite">Preparing the ocean…</p>
+
+        <div id="controls" class="hidden">
+          <button id="dive" class="ms-btn ms-btn-go" type="button" data-menu-item>
+            <span class="ms-btn-label">Start game</span>
+            <span class="ms-btn-sub">the ocean is ready</span>
+          </button>
+        </div>
+
+        <a class="ms-btn ms-btn-quiet" href="../../index.html" data-menu-item>
+          <span class="ms-btn-label">Go to homepage</span>
+        </a>
+      </nav>
+
+      <section class="ms-controls" aria-labelledby="ctl-h">
+        <h2 class="ms-controls-h" id="ctl-h">Controls</h2>
+        <p class="ms-note">
+          Six keys and the mouse are the whole input surface. <strong>WASD</strong>
+          swims and <strong>the mouse looks</strong>; hold <strong>Shift</strong> to
+          burn the stamina ring for speed, and <strong>left click</strong> to bite —
+          everything you eat pays points, and <strong>E</strong> is where you spend
+          them. Whales fight back and early on they win, so pick your fights.
+          <strong>Esc</strong> frees the cursor whenever you want out.
+        </p>
+
+        <dl class="ms-keys">
+          <div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Swim</dd></div>
+          <div><dt><kbd>Space</kbd><kbd>Ctrl</kbd></dt><dd>Rise, dive</dd></div>
+          <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
+          <div><dt><kbd>Click</kbd></dt><dd>Bite</dd></div>
+          <div><dt><kbd>E</kbd></dt><dd>Your shark, in 3D</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Free the cursor</dd></div>
+        </dl>
+      </section>
+    </div>
+
+    <div class="credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent) &nbsp;·&nbsp; audio CC0 via Freesound (Fission9) &amp; OpenGameArt</div>
+  </div>
+
+<!-- start-menu.js is only the keyboard navigation for the two options above; it is
+     not on the critical path and the menu works without it. main.js is the game. -->
+<script type="module" src="start-menu.js"></script>
+<script type="module" src="../../main.js"></script>
+</body>
+</html>

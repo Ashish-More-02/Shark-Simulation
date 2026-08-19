@@ -29,13 +29,7 @@
        at high priority and nothing else above the fold competes with it. -->
   <link rel="preload" as="image" href="assets/landing_page/hero-dive.webp" fetchpriority="high" />
 
-  <!-- ORDER MATTERS. style.css is the GAME's sheet and it sets
-       `html, body { height: 100%; overflow: hidden }` — correct for a canvas that
-       fills the window, fatal for a page you scroll. landing.css loads second and
-       re-opens the scroll with `html:not(.playing)`, so the game's own rules snap
-       back the moment .playing lands on <html>. See src/landing_page/landing.js. -->
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="src/landing_page/landing.css" />
+  <link rel="stylesheet" href="pages/landing/landing.css" />
 
   <!-- Reveal gate. The scroll-up animations are declared under `html.lp-js`, so
        this one line is what hides them — which means a blocked or broken module
@@ -43,28 +37,21 @@
        before first paint, so it is inline and classic, not deferred. -->
   <script>document.documentElement.classList.add('lp-js');</script>
 
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-    }
-  }
-  </script>
+  <!-- The play page is one hop away and every CTA on this page points at it, so
+       warm the document now rather than on the click. Only the document: its ~5 MB
+       of models are a cost the player opts into by going there. -->
+  <link rel="prefetch" href="pages/game/game.html" />
 </head>
-<body>
+<body class="lp">
 
-<!-- ============================================================
-     THE MARKETING SHELL. Everything in here is hidden the instant a
-     "Dive in" button is pressed; #game below is revealed in its place.
-
-     A note on the copy, because it is a deliberate constraint rather than an
+<!-- A note on the copy, because it is a deliberate constraint rather than an
      oversight: this page shows and withholds. No prey price list, no upgrade
      costs, no stat blocks, no creature roster. Eight of the ten levels are
      redacted on purpose. Everything here is a reason to open the game, and
      nothing here is a substitute for opening it.
-     ============================================================ -->
-<div id="landing" class="lp">
+
+     Every "Dive in" is a plain link to pages/game/game.html. That is the whole
+     handoff: no JS, no dynamic import, and the browser's own back button works. -->
 
   <div class="lp-grain" aria-hidden="true"></div>
 
@@ -86,7 +73,7 @@
       <a href="#gameplay">Gameplay</a>
       <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub</a>
     </nav>
-    <button type="button" class="lp-btn lp-btn-sm lp-play" data-play>Dive in</button>
+    <a class="lp-btn lp-btn-sm lp-play" href="pages/game/game.html">Dive in</a>
   </header>
 
   <main>
@@ -119,10 +106,10 @@
         <p class="lp-hook">The ocean does not hand anything over.<br />You go down and you take it.</p>
 
         <div class="lp-hero-cta">
-          <button type="button" class="lp-btn lp-btn-lg lp-play" data-play>
+          <a class="lp-btn lp-btn-lg lp-play" href="pages/game/game.html">
             Dive in
             <span class="lp-btn-sub">plays in your browser · no install</span>
-          </button>
+          </a>
           <p class="lp-desktop-note" role="note">
             <strong>Best on desktop.</strong> Keyboard, mouse and a real GPU —
             open this on a laptop and go under.
@@ -542,10 +529,10 @@
         </dl>
 
         <div class="lp-hero-cta">
-          <button type="button" class="lp-btn lp-btn-lg lp-play" data-play>
+          <a class="lp-btn lp-btn-lg lp-play" href="pages/game/game.html">
             Dive in
             <span class="lp-btn-sub">~60 fps · no install</span>
-          </button>
+          </a>
           <p class="lp-desktop-note" role="note">
             <strong>Best on desktop.</strong> Keyboard and mouse only — come back on a laptop.
           </p>
@@ -567,7 +554,7 @@
         </a>
         <nav class="lp-footer-links" aria-label="Elsewhere">
           <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub repository</a>
-          <button type="button" class="lp-ghost lp-play" data-play>Dive in</button>
+          <a class="lp-ghost lp-play" href="pages/game/game.html">Dive in</a>
         </nav>
       </div>
       <p class="lp-credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent) &nbsp;·&nbsp; audio CC0 via Freesound (Fission9) &amp; OpenGameArt</p>
@@ -576,97 +563,7 @@
       <p class="lp-credit lp-copyright">&copy; 2026 Ashish More &nbsp;·&nbsp; Deep Ocean Shark</p>
     </div>
   </footer>
-</div>
 
-<!-- ============================================================
-     THE GAME. Byte-for-byte the markup that used to be the whole of this file,
-     wrapped in #game and hidden until a play button asks for it. `hidden` on the
-     wrapper is display: none, which keeps the canvas out of layout AND stops
-     every fixed overlay inside from rendering. Nothing in here has a transform,
-     so the overlays' position: fixed still resolves against the viewport.
-     ============================================================ -->
-<div id="game" hidden>
-  <canvas id="scene"></canvas>
-
-  <!-- HUD -->
-  <div id="hud" class="hidden">
-    <div class="hud-row"><span class="label">HEALTH</span><span id="hp">100 / 100</span></div>
-    <div class="hud-row"><span class="label">DEPTH</span><span id="depth">0 m</span></div>
-    <div class="hud-row"><span class="label">SPEED</span><span id="speed">0 mph</span></div>
-    <div class="hud-row"><span class="label">ORBS</span><span id="orbs">0 / 0</span></div>
-    <div class="hud-row"><span class="label">EATEN</span><span id="eaten">0</span></div>
-    <div class="hud-row"><span class="label">POINTS</span><span id="points">0</span></div>
-    <div class="hud-row"><span class="label">SIZE</span><span id="size">6.0 m</span></div>
-    <div class="hud-row"><span class="label">NEAREST</span><span id="track">—</span></div>
-  </div>
-
-  <!-- In-game menu — toggled with E. Everything inside is built by
-       src/menu/menu.js; the pages live in src/menu/pages/. -->
-  <div id="menu" class="hidden"></div>
-
-  <!-- Perf readout — toggled with F3 (or `). Hidden by default. -->
-  <div id="perf" class="hidden"></div>
-
-  <!-- Placement editor readout — toggled with F4. See src/editor.js. -->
-  <div id="editor" class="hidden"></div>
-
-  <!-- Bite reticle: flashes on a hit, harder on a kill. The bar under the text is
-       the TARGET's remaining health — see showBiteInfo() in src/hud.js. -->
-  <div id="crosshair" class="hidden"></div>
-  <div id="biteInfo"><span id="biteText"></span><div id="biteBar" class="hidden"><i></i></div></div>
-
-  <!-- Boost stamina ring — sits off the shark's left flank. Only up while Shift
-       is held; the fill fraction is the --p custom property, written from hud.js. -->
-  <div id="stamina" class="hidden"></div>
-
-  <!-- Health bar — floats over the shark's head, positioned in SCREEN space from
-       the projected world point (see world.js). Only up for a couple of seconds
-       after your health actually moves. -->
-  <div id="health"><i></i></div>
-
-  <!-- Damage vignette: a red pulse on every hit, held while health is critical. -->
-  <div id="damage"></div>
-
-  <!-- Death banner. Up while the shark drifts, faded as it wakes in the shallows. -->
-  <div id="death"></div>
-
-  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> free cursor</div>
-
-  <button id="mute" aria-label="Mute audio">🔊</button>
-
-  <!-- The escape hatch back to the landing page. A reload is the only honest way
-       out: it tears down the WebGL context, the audio graph and the pointer lock
-       in one go, and there is nothing to un-wire by hand. -->
-  <button id="lp-exit" type="button">← Back to the site</button>
-
-  <!-- Start / loading screen -->
-  <div id="start">
-    <div class="panel">
-      <h1>🦈 Deep Ocean Shark</h1>
-      <p class="tag">Explore the deep as an apex predator.</p>
-      <div id="loading">Loading the ocean…</div>
-      <div id="controls" class="hidden">
-        <div class="ctrls">
-          <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> swim &amp; turn</div>
-          <div><kbd>Space</kbd> rise &nbsp; <kbd>Ctrl</kbd> dive</div>
-          <div><kbd>Shift</kbd> boost &nbsp; <kbd>Left click</kbd> bite</div>
-          <div><kbd>E</kbd> menu — your shark in 3D, its stats, and the <b>+</b> buttons that spend points</div>
-          <div>Everything you eat pays points: a fry 1, a lunker 5, a dolphin 40, a whale 150. Spend them on health, attack, attack speed or stamina — upgrades are expensive, so pick a direction rather than a bit of everything</div>
-          <div>Boost burns the green ring beside you — empty it and you swim at cruise until it refills</div>
-          <div>Move the <b>mouse</b> to look · collect the glowing orbs</div>
-          <div>Hunt to grow: fish go down in one bite, a dolphin takes <b>10</b> and runs from you — a whale takes <b>50</b>, and hits for half your health</div>
-          <div>Eating heals you — the bar over your head shows your health whenever it moves</div>
-          <div><b>Whales fight back, and early on they win.</b> Bite one and it turns on you — it rears back before every strike, so swim clear and come back in. Break off for 10s and it forgets you. Come back for it once you have spent some points</div>
-          <div>The <b>NEAREST</b> readout points you at the nearest big animal</div>
-          <div><kbd>F3</kbd> performance readout &nbsp; <kbd>F4</kbd> placement editor</div>
-        </div>
-        <button id="dive">Dive In</button>
-      </div>
-    </div>
-    <div class="credit">Built with Three.js &nbsp;·&nbsp; models CC-BY via Poly Pizza (Poly by Google, Christopher&nbsp;F, Laney&nbsp;XR&nbsp;Labs, cyprienxld, Nerdy&nbsp;Rodent) &nbsp;·&nbsp; audio CC0 via Freesound (Fission9) &amp; OpenGameArt</div>
-  </div>
-</div>
-
-<script type="module" src="src/landing_page/landing.js"></script>
+<script type="module" src="pages/landing/landing.js"></script>
 </body>
 </html>

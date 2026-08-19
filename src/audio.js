@@ -1,5 +1,6 @@
 import { AUDIO } from './config/config.js';
 import { live } from './placement.js';
+import { assetUrl } from './assets.js';
 
 // ============================================================
 //  AUDIO — plain HTMLAudioElements: three ambient loops, one loop
@@ -10,7 +11,7 @@ import { live } from './placement.js';
 let muted = false;
 
 function makeLoop(cfg) {
-  const el = new Audio(cfg.url);
+  const el = new Audio(assetUrl(cfg.url));
   el.loop = true;
   el.volume = Array.isArray(cfg.volume) ? cfg.volume[0] : cfg.volume;
   return el;
@@ -36,7 +37,7 @@ function playOnce(cfg) {
   let pool = pools.get(cfg.url);
   if (!pool) {
     pool = { els: [], next: 0 };
-    for (let i = 0; i < POOL_SIZE; i++) pool.els.push(new Audio(cfg.url));
+    for (let i = 0; i < POOL_SIZE; i++) pool.els.push(new Audio(assetUrl(cfg.url)));
     pools.set(cfg.url, pool);
   }
   const el = pool.els[pool.next];

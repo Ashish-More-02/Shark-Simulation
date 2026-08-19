@@ -1,45 +1,40 @@
 /* ============================================================
-   DEEP OCEAN SHARK — landing page.
+   DEEP OCEAN SHARK — landing page.   pages/landing/landing.css
 
-   Loaded AFTER the game's style.css, on purpose. That sheet owns
-   `html, body { height: 100%; overflow: hidden }` because it is dressing a
-   canvas that fills the window; this one has to undo exactly that for as long
-   as the visitor is reading rather than playing. The undo is written as
-   `html:not(.playing)` rather than as a plain `html` override so it does not
-   depend on which sheet the browser happened to parse last: landing.js puts
-   `.playing` on <html> when the game boots, and the game's own rules take back
-   over at that moment. See src/landing_page/landing.js.
+   The only stylesheet /index.html loads. It used to share a document with the
+   game's sheet and spent its first forty lines undoing that sheet's
+   `html, body { overflow: hidden }` behind an `html:not(.playing)` guard; the
+   game now lives on its own page (pages/game/game.html) and none of that
+   negotiation is left. What is here is the marketing page and nothing else.
 
-   Everything else is namespaced under .lp so nothing leaks into the game's HUD,
-   menu or start screen — the two designs share a page but not a selector.
+   Everything is still namespaced under .lp. That is no longer load-bearing —
+   there is no HUD on this page to leak into — but it stays because the tokens are
+   declared on the .lp element, and because it keeps this sheet safe to drop into
+   any page that wants the same furniture.
    ============================================================ */
 
-/* ---- THE SCROLL SWITCH --------------------------------------------------- */
-html:not(.playing),
-html:not(.playing) body {
-  height: auto;
-  overflow: visible;
-}
-/* Belt and braces against a stray horizontal scrollbar. `clip` rather than
-   `hidden` on purpose: `hidden` would make the body a scroll container, and a
-   scroll container that isn't the one actually scrolling breaks every
-   position: sticky inside it. */
-html:not(.playing) body { overflow-x: clip; }
-html:not(.playing) { scroll-behavior: smooth; }
-/* The gutter is reserved whether or not the scrollbar is showing, so that the
-   lightbox can take the page's scroll away (html.lp-zoom, further down) without
-   the whole layout jumping sideways by a scrollbar's width. */
-html:not(.playing) { scrollbar-gutter: stable; }
-@media (prefers-reduced-motion: reduce) {
-  html:not(.playing) { scroll-behavior: auto; }
-}
+/* ---- PAGE ---------------------------------------------------------------- */
+/* margin: 0 is load-bearing and easy to lose: the game's sheet used to be loaded
+   alongside this one and its `* { margin: 0 }` was quietly zeroing the body. That
+   sheet is on its own page now, so this file owns its own reset — without this
+   line the UA's default 8px body margin comes back and every full-bleed section
+   inherits a gutter.
 
-/* The marketing shell and the game are mutually exclusive; both use the `hidden`
-   attribute, and #game gets pinned to the viewport so the canvas lands exactly
-   where it used to. No transform / filter / contain on this wrapper — any of
-   those would become the containing block for the HUD's position: fixed. */
-#game { position: fixed; inset: 0; z-index: 1; }
-#landing[hidden], #game[hidden] { display: none !important; }
+   overflow-x: clip is belt and braces against a stray horizontal scrollbar.
+   `clip` rather than `hidden` on purpose: `hidden` would make the body a scroll
+   container, and a scroll container that isn't the one actually scrolling breaks
+   every position: sticky inside it. */
+body { margin: 0; overflow-x: clip; }
+html {
+  scroll-behavior: smooth;
+  /* The gutter is reserved whether or not the scrollbar is showing, so the
+     lightbox can take the page's scroll away (html.lp-zoom, further down) without
+     the whole layout jumping sideways by a scrollbar's width. */
+  scrollbar-gutter: stable;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 
 /* ============================================================
    TOKENS
@@ -65,8 +60,8 @@ html:not(.playing) { scrollbar-gutter: stable; }
   --t-lede: clamp(17px, 0.8vw + 14px, 22px);
   --t-h2: clamp(30px, 3.4vw + 14px, 60px);
 
+  /* z-index is gone with #game: nothing shares this page to stack against. */
   position: relative;
-  z-index: 2;
   background: var(--deep);
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -75,7 +70,10 @@ html:not(.playing) { scrollbar-gutter: stable; }
   -webkit-font-smoothing: antialiased;
 }
 
-.lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
+/* `.lp *` is descendants only, so the .lp element itself — which is <body> — has
+   to be named. It carries no width or padding today, but a box-sizing hole in a
+   reset is the kind of thing that bites the next person to add one. */
+.lp, .lp *, .lp *::before, .lp *::after { box-sizing: border-box; }
 /* :where() so the reset carries ZERO specificity — otherwise `.lp img` (one
    class + one type) outranks every `.lp-*-plate` rule that has to size a
    full-bleed image, and every one of them silently reverts to height: auto. */
@@ -90,8 +88,13 @@ html:not(.playing) { scrollbar-gutter: stable; }
 :where(.lp) :where(ul, ol, dl) { margin: 0; padding: 0; list-style: none; }
 .lp strong { color: var(--ink); font-weight: 700; }
 
-.lp :focus-visible,
-#lp-exit:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+/* Outline at full specificity, radius at none — see the same pair in
+   pages/game/start-menu.css. `.lp :focus-visible` is two classes and it outranked
+   `.lp-btn`'s 999px, so focusing a pill squared it off to 6px. In a :where() the
+   radius is a floor for the plain links that have none, and every control that
+   brings its own keeps it. */
+.lp :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+:where(.lp :focus-visible) { border-radius: 6px; }
 
 .lp-wrap { width: 100%; max-width: var(--wrap); margin-inline: auto; padding-inline: var(--pad); }
 
@@ -185,13 +188,18 @@ html:not(.playing) { scrollbar-gutter: stable; }
   border: 0;
   border-radius: 999px;
   background: var(--accent);
-  color: var(--accent-ink);
   font-family: inherit;
   font-weight: 800;
   letter-spacing: -0.01em;
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
+/* The ink lives on its own rule because it needs the second class to clear the
+   `.lp a { color: inherit }` reset near the top of this file: that reset is one
+   class plus a type selector, which outranks a bare `.lp-btn`, so every button
+   that is an <a> — which is all three of them — silently rendered --ink white
+   instead of the deep green. `.lp .lp-btn` is two classes and wins it back. */
+.lp .lp-btn { color: var(--accent-ink); }
 .lp-btn:hover { background: #6cf0e3; transform: translateY(-2px); box-shadow: 0 14px 34px rgba(76, 227, 212, 0.3); }
 .lp-btn:active { transform: none; }
 .lp-btn-sm { padding: 9px 18px; font-size: 13.5px; }
@@ -230,6 +238,7 @@ html:not(.playing) { scrollbar-gutter: stable; }
     font-size: 14.5px;
     line-height: 1.5;
     text-align: left;
+    color:black;
   }
   .lp-hero .lp-desktop-note { margin-inline: auto; }
 }
@@ -795,7 +804,7 @@ html:not(.playing) { scrollbar-gutter: stable; }
   background: none;
   color: inherit;
   font: inherit;
-  cursor: zoom-in;
+  cursor: pointer;
 }
 .lp-shot-open img { transition: filter 0.2s ease; }
 .lp-shot-open:hover img, .lp-shot-open:focus-visible img { filter: brightness(1.09) saturate(1.04); }
@@ -928,10 +937,10 @@ html:not(.playing) { scrollbar-gutter: stable; }
 @keyframes lp-zoom-in { from { opacity: 0; transform: scale(0.985); } }
 @keyframes lp-fade-in { from { opacity: 0; } }
 
-/* Stop the page scrolling underneath the viewer. The gutter is reserved on the
-   scroll container at all times (see the scroll switch at the top of this file),
-   so taking the scrollbar away here costs no reflow. */
-html.lp-zoom:not(.playing) { overflow: hidden; }
+/* Stop the page scrolling underneath the viewer. `scrollbar-gutter: stable` at the
+   top of this file reserves the gutter at all times, so taking the scrollbar away
+   here costs no reflow. */
+html.lp-zoom { overflow: hidden; }
 
 @media (max-width: 620px) {
   .lp-lightbox-figure img { max-height: calc(100vh - clamp(210px, 32vh, 280px)); }
@@ -1016,8 +1025,8 @@ html.lp-zoom:not(.playing) { overflow: hidden; }
   background:
     radial-gradient(70% 60% at 18% 110%, rgba(76, 227, 212, 0.15), rgba(76, 227, 212, 0) 62%),
     linear-gradient(180deg, var(--deep), var(--abyss));
+  text-align: center;
 }
-.lp-final { text-align: center; }
 .lp-final-body {
   margin-inline: auto;
   display: grid;
@@ -1093,35 +1102,7 @@ html.lp-js .lp-reveal.is-in { opacity: 1; transform: none; will-change: auto; }
 @media (prefers-reduced-motion: reduce) {
   html.lp-js .lp-reveal { opacity: 1; transform: none; transition: none; }
   .lp-dot, .lp-gauge-bead { animation: none; }
-  .lp-hero-plate { transform: scale(1.02); }
   .lp-btn:hover, .lp-plate:hover { transform: none; }
   .lp-plate:hover img { transform: none; }
   .lp *, .lp *::before, .lp *::after { transition-duration: 0.01ms !important; }
 }
-
-/* ============================================================
-   THE GAME'S ESCAPE HATCH
-   Lives inside #game, so it is styled here rather than in style.css — the game
-   proper has no such button and should not grow one. Parked left of #mute.
-   ============================================================ */
-#lp-exit {
-  position: fixed;
-  top: clamp(10px, 1.6vh, 18px);
-  /* #mute's own right inset + its width + a gap, so the two never collide at any
-     viewport height. See style.css #mute. */
-  right: calc(clamp(10px, 1.6vw, 18px) + clamp(36px, 4.6vh, 44px) + 10px);
-  z-index: 40;
-  padding: 8px 14px;
-  border: 1px solid rgba(120, 200, 255, 0.28);
-  border-radius: 999px;
-  background: rgba(4, 22, 38, 0.5);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  color: #cfe9fb;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease;
-}
-#lp-exit:hover { background: rgba(4, 22, 38, 0.82); color: #4ce3d4; }

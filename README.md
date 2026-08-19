@@ -44,6 +44,25 @@ npx serve            # then open the printed http://localhost:3000
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
+Two pages:
+
+| URL | What it is |
+| --- | --- |
+| `/` | the landing page — marketing, gameplay gallery, every CTA points at the game |
+| `/pages/game/game.html` | the start menu **and** the game, in one document |
+
+The menu is not a separate page. It is `#start`, the overlay the game has always
+had, restyled by `pages/game/start-menu.css` — so the flow is two screens and **one**
+click, not three and two. `main.js` calls `buildWorld()` the moment the module
+runs, so the ~5 MB of models download while the player is reading the controls;
+`src/hud.js` swaps `#loading` for `#controls` when the world is ready, which turns
+the placeholder into the Start button. That single press is also the user gesture
+pointer lock and audio need — which is exactly why the menu cannot be its own page:
+a click does not survive a navigation.
+
+Open `/pages/game/game.html` directly to skip the landing page while working. It
+stands alone: nothing in `src/` reads anything from `/` or `pages/landing/`.
+
 ## Controls
 
 | Key | Action |
@@ -64,8 +83,14 @@ pulses on a hit and flares on a kill, and multi-bite prey shows its progress
 
 ```
 shark-game/
-├── index.html        # page + Three.js import map + HUD markup
-├── style.css         # HUD + start screen
+├── index.html        # the landing page. Stays at the root so / is the site root
+├── pages/            # one folder per screen: its html, its css, its js
+│   ├── landing/      # landing.css + landing.js — index.html's half of the pair
+│   └── game/         # one document: the start menu, the canvas and the HUD
+│       ├── game.html
+│       ├── game.css      # the canvas and everything drawn over it
+│       ├── start-menu.css# #start, the screen the player lands on
+│       └── start-menu.js # keyboard navigation for the two menu options
 ├── main.js           # entry point: boot + frame loop, nothing else
 ├── src/
 │   ├── config/
@@ -74,6 +99,7 @@ shark-game/
 │   │       ├── index.js  # the LEVELS array + the prop-row key legend
 │   │       ├── level-1.js# LEVEL_1 "The Shallows" + its PROPS_PLAIN table
 │   │       └── level-2.js# LEVEL_2 "The Reef" + its PROPS table
+│   ├── assets.js     # resolves assets/ against src/, not against the page
 │   ├── core.js       # renderer / scene / camera / shared clock / lights
 │   ├── levels.js     # the shape of the world: floor profile, play bound, extent
 │   ├── editor.js     # F4 in-game placement editor (Docs/systems/placement-editor.md)

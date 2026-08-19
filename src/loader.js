@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { assetUrl } from './assets.js';
 
 // ============================================================
 //  MODEL LOADER  — normalizes scale + orientation
@@ -37,7 +38,9 @@ function mergeByMaterial(root) {
 
 export function loadModel({ url, targetSize, rotY, anchorBottom, twoSided = false }) {
   return new Promise((resolve, reject) => {
-    loader.load(url, (gltf) => {
+    // assetUrl, not `url`: the config strings are root-relative and the page that
+    // loads this is not at the root. See src/assets.js.
+    loader.load(assetUrl(url), (gltf) => {
       let model = gltf.scene;
 
       // collapse draw-call-heavy static props (skinned rigs are left alone)

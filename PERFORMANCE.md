@@ -558,7 +558,7 @@ stay compressed in VRAM, unlike PNG/JPEG which decompress to full RGBA.
 
 ### 5.5 Bundle the app
 
-[index.html:8-15](index.html#L8-L15) pulls three from jsDelivr via importmap, and
+[pages/game/game.html](pages/game/game.html) pulls three from jsDelivr via importmap, and
 `src/` ships as 18 unminified ES modules. That is ~20 sequential-ish HTTP requests
 before the first frame. A Vite build (tree-shaken, minified, single chunk) cuts
 both the request count and the parse time meaningfully.
@@ -632,7 +632,7 @@ and you may hit target before finishing.
 
 | # | Change | Files | Status |
 |---|---|---|---|
-| 0 | F3 perf readout (fps / ms / CPU ms / draw calls / tris / dpr; Phase 2 added visible-chunk count) — **§1** | [main.js](main.js), [hud.js](src/hud.js), [index.html](index.html), [style.css](style.css) | added |
+| 0 | F3 perf readout (fps / ms / CPU ms / draw calls / tris / dpr; Phase 2 added visible-chunk count) — **§1** | [main.js](main.js), [hud.js](src/hud.js), [game.html](pages/game/game.html), [game.css](pages/game/game.css) | added |
 | 1 | Pixel ratio cap 2.0 → **1.5**, `antialias: false`, `stencil: false`, `powerPreference` — **§2.1** | [core.js](src/core.js#L11) | done |
 | 2 | `DoubleSide` → per-model `twoSided` flag, default `FrontSide` — **§3.2** | [config.js](src/config/config.js), [loader.js](src/loader.js#L58) | done |
 | 3 | Frustum culling re-enabled for all non-skinned meshes — **§3.1** | [loader.js](src/loader.js#L56) | done |
