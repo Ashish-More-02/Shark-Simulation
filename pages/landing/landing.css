@@ -51,6 +51,12 @@ html {
   --accent: #4ce3d4;
   --accent-ink: #032420;
 
+  /* Two stacks. The display face is loaded in index.html's head and used by
+     headings only; --font-ui is the fallback inside it, so a blocked or slow
+     font file leaves every heading in the system stack rather than unstyled. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Archivo", var(--font-ui);
+
   --wrap: 1200px;
   --pad: clamp(20px, 5vw, 64px);
   --r: 14px;
@@ -64,7 +70,7 @@ html {
   position: relative;
   background: var(--deep);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: var(--t-body);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -80,7 +86,7 @@ html {
 :where(.lp) :where(img, video) { display: block; max-width: 100%; height: auto; }
 .lp a { color: inherit; text-decoration: none; }
 .lp p { margin: 0; }
-.lp h1, .lp h2, .lp h3 { margin: 0; font-weight: 800; letter-spacing: -0.02em; line-height: 1.06; }
+.lp h1, .lp h2, .lp h3 { margin: 0; font-family: var(--font-display); font-weight: 800; letter-spacing: -0.025em; line-height: 1.05; }
 /* :where() for the same reason as the media reset above. `.lp ol` is one class
    plus one type, which outranked `.lp-levels`'s own `margin-inline: auto` and
    `padding-inline` — the ten-level chart lost its centring to this line and sat
@@ -172,9 +178,67 @@ html {
 .lp-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -0.01em; }
 .lp-mark svg { width: 26px; height: 20px; fill: var(--accent); flex: none; }
 .lp-mark span { font-size: 15px; white-space: nowrap; }
-.lp-nav-links { display: flex; gap: clamp(14px, 2vw, 28px); font-size: 14px; color: var(--dim); }
-.lp-nav-links a { transition: color 0.16s ease; }
-.lp-nav-links a:hover { color: var(--accent); }
+/* The gap comes off the links and goes into their own padding, because the hover
+   pill is drawn around a LINK's box: with the space outside the box the pill
+   would end flush against the word at both ends and read as a tight label rather
+   than as a pill. position: relative is what the glide is measured against. */
+.lp-nav-links {
+  position: relative;
+  display: flex;
+  gap: clamp(2px, 0.6vw, 8px);
+  font-size: 14px;
+  color: var(--dim);
+}
+/* z-index over the glide, which is the nav's first child and would otherwise
+   paint on top of the words it is meant to sit behind. */
+.lp-nav-links a {
+  position: relative;
+  z-index: 1;
+  padding: 7px clamp(10px, 1.1vw, 15px);
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: color 0.16s ease;
+}
+.lp-nav-links a:hover { color: var(--ink); }
+
+/* ---- THE SLIDING HIGHLIGHT ----
+   One pill for the whole group rather than a background per link. landing.js
+   writes three custom properties on it — the width and height of the link under
+   the cursor and its x offset inside the nav — and the transition on width and
+   transform is what makes it travel between them instead of blinking.
+
+   It is glass in the same three layers the nav pill itself uses (blur, sheer
+   fill, specular top edge), just lighter, so it reads as a pane sliding across
+   the inside of the bar rather than as a second bar.
+
+   translate before -50% on Y, because the vertical centring is a constant and the
+   horizontal position is the animated half; both live in one transform so the
+   compositor only has one property to interpolate.
+
+   Width IS animated here, and knowingly: it is one small absolutely-positioned
+   element with no children, so it lays out itself and nothing else. */
+.lp-nav-glide {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 0;
+  width: var(--gw, 0px);
+  height: var(--gh, 34px);
+  transform: translate(var(--gx, 0px), -50%);
+  border: 1px solid rgba(122, 200, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(122, 200, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(190, 235, 255, 0.16), 0 4px 16px rgba(1, 6, 12, 0.3);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+  backdrop-filter: blur(8px) saturate(150%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.34s cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 0.34s cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 0.22s ease;
+}
+.lp-nav-links.is-gliding .lp-nav-glide { opacity: 1; }
 @media (max-width: 780px) { .lp-nav-links { display: none; } }
 
 /* ============================================================
@@ -205,6 +269,43 @@ html {
 .lp-btn-sm { padding: 9px 18px; font-size: 13.5px; }
 .lp-btn-lg { padding: 18px 44px; font-size: clamp(16px, 0.6vw + 14px, 19px); }
 .lp-btn-sub { font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; opacity: 0.7; }
+
+/* ---- THE SECONDARY PILL ----
+   Same element, same shape and the same size classes as the primary — it is
+   .lp-btn plus .lp-btn-lg plus this — so the two CTAs sit as a matched pair. The
+   only difference is the fill: glass instead of accent, which is enough to rank
+   them without changing either one's silhouette.
+
+   Every rule here has to out-rank a plain .lp-btn one, so each carries two
+   classes and the block sits AFTER .lp-btn in the file. Same glass recipe as the
+   nav pill: blur to sample the footage behind it, a sheer fill so white type
+   stays legible over a bright frame, an inset hairline for the top edge. */
+.lp-btn.lp-btn-glass {
+  border: 1px solid rgba(122, 200, 255, 0.26);
+  background: rgba(4, 18, 31, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 235, 255, 0.16),
+    0 10px 30px rgba(1, 6, 12, 0.42);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  font-weight: 700;
+}
+/* Two classes to clear `.lp a { color: inherit }` the same way `.lp .lp-btn`
+   does above — and to clear that rule's accent ink, which is for the filled
+   pill only. */
+.lp .lp-btn-glass { color: var(--ink); }
+.lp-btn.lp-btn-glass:hover {
+  background: rgba(76, 227, 212, 0.16);
+  border-color: rgba(76, 227, 212, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 235, 255, 0.2),
+    0 14px 34px rgba(1, 6, 12, 0.5);
+}
+.lp .lp-btn-glass:hover { color: var(--accent); }
+/* Without backdrop-filter the 0.42 fill is too sheer to hold type over footage. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .lp-btn.lp-btn-glass { background: rgba(3, 13, 23, 0.86); }
+}
 
 .lp-ghost {
   display: inline-block;
@@ -293,87 +394,573 @@ html {
 
 /* ============================================================
    HERO
-   Centred and symmetrical, built on one generated plate. The plate is an <img>
-   rather than a background so it gets fetchpriority and a real alt; it is
-   oversized by the parallax scale so the drift never exposes an edge.
+   Was: a centred stack on a still plate, symmetrical, with 250px of nothing
+   between the CTA and the rail and the shark hidden behind the button.
+
+   Now: type-first and asymmetric. The lockup takes the left of the measure, the
+   dive computer takes the right, and the plate is nudged right so its subject
+   sits in the gap between them rather than under the CTA. Everything that moves
+   moves on the compositor — two gradient layers, sixteen motes, one conic sweep,
+   all transform/opacity. No rAF, no scroll listener, no layout.
    ============================================================ */
 .lp-hero {
+  /* The hero does NOT use --wrap. Everything else on the page is centred on a
+     1200px measure, which on a wide window parks the lockup a couple of hundred
+     pixels in from the left edge and the dive computer the same distance in from
+     the right. This section wants both of them out at the edges of the window
+     instead — type hard left, instruments hard right, footage filling everything
+     between — so it declares its own gutter and every child inside it uses that
+     rather than .lp-wrap.
+
+     It tops out at 88px: past that the lockup starts drifting back toward the
+     middle of a very wide monitor, which is the thing this token exists to stop. */
+  --hero-gutter: clamp(20px, 4vw, 88px);
+
   position: relative;
   min-height: 100svh;
   display: grid;
-  align-content: center;
-  justify-items: center;
-  padding: clamp(110px, 16vh, 170px) 0 clamp(96px, 15vh, 150px);
+  /* `end`, not `centre`. The reference anchors its lockup low in the frame and
+     leaves the top two thirds as picture, and a centred block sat right across the
+     middle of the footage. The bottom padding is what holds the lockup clear of
+     .lp-hero-foot below it — 176px is the foot's own height at its tallest (the
+     112px sonar dial plus its 42px offset) with room to spare, so the two can
+     never meet. */
+  align-content: end;
+  padding: clamp(96px, 14vh, 150px) 0 clamp(176px, 24vh, 220px);
   overflow: hidden;
   isolation: isolate;
-  text-align: center;
 }
+/* 116% wide and pinned left, which is the whole trick: cover still fills the
+   section, but the frame's centre now lands at 58% of the viewport instead of
+   50%, so the subject clears the lockup. max-width: none is load-bearing — the
+   reset near the top of this file caps every img and video at 100% and would
+   silently undo it.
+
+   One class for both the poster and the clip, because the two have to occupy
+   exactly the same box: a video whose poster is laid out differently from its
+   frames visibly jumps the moment playback starts. */
 .lp-hero-plate {
   position: absolute;
-  inset: 0;
-  z-index: -2;
-  width: 100%;
+  top: 0;
+  left: 0;
+  z-index: -5;
+  width: 116%;
+  max-width: none;
   height: 100%;
   object-fit: cover;
+  object-position: center 44%;
 }
+/* The clip is the reason anyone stays on this section, so it is graded to be
+   WATCHED, not to be sat on. The 0.82 brightness this rule used to carry is gone:
+   it bought the type contrast the cheap way, by taking it off the footage
+   everywhere, and the left-hand scrim and blur now do that job locally instead.
+   What is left is a touch of contrast to counter the flatness a video codec
+   leaves behind.
+
+   pointer-events: none is not cosmetic. Without it the video eats every click
+   and drag across the full bleed of the hero — including the ones aimed at the
+   text selection under the lockup — and on some builds a right-click still
+   raises the native media menu on an element that has no controls to offer. */
+.lp-hero-video {
+  pointer-events: none;
+  filter: contrast(1.04) saturate(1.02);
+}
+/* A moving backdrop is exactly what reduced motion is asking not to be given, so
+   the clip goes and the poster stays. landing.js pauses the element as well —
+   this rule only hides it, and a hidden video that is still decoding is still
+   spending the battery the setting is trying to protect. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-hero-video { display: none; }
+  .lp-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -5;
+    background: url("../../assets/landing_page/hero-dive.webp") center 44% / cover no-repeat;
+    filter: brightness(0.86);
+  }
+}
+/* ---- THE LEFT-HAND TREATMENT ----
+   One real blur, and it only exists on the left third.
+
+   A backdrop-filter is clipped to its own element's box, so masking the element
+   masks the blur along with it — which is what makes a PARTIAL blur possible at
+   all.
+
+   Both numbers came down: 22px of blur to 9px, and the mask now clears by 52%
+   instead of 74%. 22px was a frosted pane — it made the type effortless to read
+   and cost a third of the picture to do it. 9px is enough to break up detail
+   behind the lockup without the footage stopping being footage, and the type's
+   own drop-shadow makes up the difference.
+
+   What it still buys:
+     - a softer ground for the lockup, so the type is not reading against edges
+     - deniability for the game's own HUD, which the recording carries in its
+       top-left corner. Even at 9px it reads as texture rather than as an
+       interface belonging to something else.
+
+   No fallback rule. Without backdrop-filter this element paints nothing and the
+   scrim below still does the legibility work on its own — a slightly sharper left
+   edge is a fine outcome, and it is strictly better than a flat grey panel bolted
+   over the footage. */
+.lp-hero-blur {
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(9px) saturate(0.94);
+  backdrop-filter: blur(9px) saturate(0.94);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 20%, rgba(0, 0, 0, 0.4) 38%, transparent 52%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 20%, rgba(0, 0, 0, 0.4) 38%, transparent 52%);
+}
+
+/* The gradients, and what is NOT here matters more than what is. Two layers were
+   deleted rather than tuned:
+
+     - the original `radial-gradient(78% 66% at 30% 48%, …0.9…)`, which darkened
+       most of the frame and was why the footage looked like it was behind smoked
+       glass;
+     - the short top scrim that replaced it. Its only job was giving the nav pill
+       something to sit on, and the pill already carries its own blur and its own
+       55%-opaque fill — it does not need the window's top edge dimmed to be
+       legible, and dimming it put a band of haze across the brightest part of
+       the frame.
+
+   Two scrims left. The left one is the only heavy darkening on the page and it is
+   gone by 58%; the bottom one is there for the dive log and the dive computer and
+   lands on --deep so the hero still hands off cleanly to the section under it.
+
+   The top, middle and right of the frame get nothing at all. That is where the
+   game is. */
 .lp-hero-wash {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: -3;
+  pointer-events: none;
   background:
-    radial-gradient(76% 58% at 50% 46%, rgba(1, 6, 12, 0.78), rgba(1, 6, 12, 0.18) 72%),
-    linear-gradient(180deg, rgba(1, 6, 12, 0.82) 0%, rgba(1, 6, 12, 0.1) 26%, rgba(1, 6, 12, 0.5) 64%, var(--deep) 100%);
+    linear-gradient(90deg, rgba(1, 6, 12, 0.9) 0%, rgba(1, 6, 12, 0.7) 18%, rgba(1, 6, 12, 0.3) 36%, rgba(1, 6, 12, 0.06) 50%, transparent 58%),
+    linear-gradient(0deg, var(--deep) 0%, rgba(1, 6, 12, 0.7) 9%, rgba(1, 6, 12, 0.24) 22%, transparent 34%);
+}
+
+/* ---- FRAME ----
+   Four corner brackets. Cheapest possible way to say "you are looking through
+   something at this". */
+.lp-frame {
+  position: absolute;
+  inset: clamp(14px, 2.4vh, 28px) clamp(14px, 2vw, 30px);
+  z-index: 1;
+  pointer-events: none;
+}
+.lp-frame i {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+}
+.lp-frame i:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.lp-frame i:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; }
+.lp-frame i:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; }
+.lp-frame i:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+
+/* ---- LAYOUT ----
+   One column, and a deliberately narrow one. The dive computer used to take a
+   second column here and the lockup filled everything left over, which meant the
+   type ran most of the way across the frame. Both of those were paid for out of
+   the footage.
+
+   Now: the copy is capped at 30em and pinned hard left against --hero-gutter — not
+   against the centred 1200px measure, which was still holding it a couple of
+   hundred pixels off the edge of a wide window. The computer has moved to
+   .lp-hero-foot, and the entire right two thirds of the window is the clip with
+   nothing over it. */
+.lp-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  width: 100%;
+  padding-inline: var(--hero-gutter);
 }
 .lp-hero-body {
   display: grid;
-  justify-items: center;
-  gap: clamp(14px, 2.2vh, 24px);
-  max-width: var(--wrap);
-  padding-inline: var(--pad);
+  justify-items: start;
+  gap: clamp(12px, 1.8vh, 22px);
+  /* The cap is in em so it tracks the type: it is a measure, not a pixel width,
+     and it is what keeps the lockup inside the blurred third at every size. */
+  width: min(100%, 30em);
+  min-width: 0;
 }
 
-/* The lockup: a wide-tracked line over one enormous word. */
-.lp-title { display: grid; gap: clamp(4px, 1vh, 12px); }
-.lp-title-a {
-  display: block;
-  color: var(--accent);
-  font-size: clamp(13px, 1.5vw + 6px, 26px);
-  font-weight: 700;
-  letter-spacing: 0.44em;
-  /* letter-spacing leaves a trailing gap after the final glyph, so centring the
-     inline box parks the glyphs half a tracking-unit left of true centre. The
-     negative right margin widens the content box by exactly that gap, which
-     moves the centre back by half of it — the line now sits optically centred
-     over the word beneath it. */
-  margin-right: -0.44em;
-  text-transform: uppercase;
-}
+/* ---- LOCKUP ----
+   Two lines of the SAME piece of type, and size is the only thing separating them.
+   "Deep Ocean" used to be a 14px teal eyebrow at 0.42em tracking — a different face
+   weight, a different colour and a different job from the word underneath it, which
+   made the lockup read as a label with a logo below it rather than as one mark.
+
+   Everything shared now lives in the grouped rule: face, weight, the 112% width
+   axis, the tight tracking, the casing, the gradient fill, the outline, the
+   shadows. Then one size each.
+
+   The sizes are chosen so the two lines come out roughly the SAME WIDTH rather
+   than the same height, which is what makes a stacked lockup sit square: "Deep
+   Ocean" is ten characters and "Shark" is five, so the top line runs at about 62%
+   of the bottom line's size and the two edges still land together.
+
+   Both came down hard from where the word started — clamp(64px, 17.5vw, 250px) was
+   a 250px slab across half the window. The reference this is modelled on sets its
+   logo at roughly a fifth of the viewport and lets the footage carry the drama.
+
+   The photographic fill went with the size. At 250px the plate showing through the
+   letterforms read as texture; at 108px, over a MOVING backdrop, it read as mud.
+   What is left is the gradient on its own — brighter, flatter, and legible against
+   any frame the clip happens to be on. */
+.lp-title { display: grid; gap: clamp(2px, 0.5vh, 7px); }
+.lp-title-a,
 .lp-title-b {
+  position: relative;
   display: block;
-  font-size: clamp(62px, 16vw, 212px);
-  font-weight: 800;
-  line-height: 0.82;
-  letter-spacing: -0.045em;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-stretch: 112%;
+  line-height: 0.86;
+  letter-spacing: -0.035em;
   text-transform: uppercase;
-  text-shadow: 0 0 90px rgba(76, 227, 212, 0.22), 0 6px 50px rgba(1, 6, 12, 0.8);
+  color: var(--ink);
+  /* Two shadows, and the tight one is the load-bearing half: a 12px drop at 70%
+     black is what keeps a white glyph readable if a bright frame of footage scrolls
+     under it. The 60px teal is the glow, and it is only atmosphere. */
+  filter: drop-shadow(0 3px 12px rgba(1, 6, 12, 0.7)) drop-shadow(0 0 60px rgba(76, 227, 212, 0.14));
 }
-.lp-hook { max-width: 44ch; color: var(--dim); font-size: var(--t-lede); line-height: 1.45; }
-.lp-hero-cta { display: grid; justify-items: center; gap: 16px; margin-top: clamp(6px, 1.4vh, 16px); }
+.lp-title-a { font-size: clamp(28px, 3.9vw, 68px); }
+.lp-title-b { font-size: clamp(46px, 6.2vw, 108px); }
 
-/* The expedition slate — the hero's entire factual budget. */
-.lp-slate {
+/* Guarded because a browser without background-clip: text would render
+   `color: transparent` and lose both words entirely — Safari answers to the
+   prefixed query, everyone else to the plain one. */
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .lp-title-a,
+  .lp-title-b {
+    background-image: linear-gradient(176deg, #ffffff 4%, rgba(214, 244, 255, 0.96) 48%, rgba(118, 234, 222, 0.9) 100%);
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-position: center;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+/* A teal hairline hugging the glyphs, drawn behind the fill so only its outer half
+   shows. Both lines carry it, so both need a data-word in the markup that matches
+   their text exactly — attr() is the only way to get the same string into a
+   pseudo-element's content, and a mismatch shows up as a ghost offset behind the
+   real one.
+
+   z-index: -1 is scoped to each line's own stacking context, which the `filter`
+   above creates: the outline lands behind that line's fill and nothing else. */
+.lp-title-a::before,
+.lp-title-b::before {
+  content: attr(data-word);
   position: absolute;
-  left: 50%;
-  bottom: clamp(34px, 6vh, 62px);
-  transform: translateX(-50%);
+  inset: 0;
+  z-index: -1;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(76, 227, 212, 0.3);
+  pointer-events: none;
+}
+/* The stroke is a fixed 1.5px, so on the smaller line it is proportionally heavier.
+   Thinning it keeps the two lines looking like one weight of type. */
+.lp-title-a::before { -webkit-text-stroke-width: 1px; }
+
+/* Smaller and brighter than a --lede: it is one line of type over footage, so it
+   needs the contrast more than it needs the size. */
+.lp-hook {
+  max-width: 34ch;
+  color: #cfe4f2;
+  font-size: clamp(15px, 0.35vw + 13.6px, 17.5px);
+  line-height: 1.5;
+  text-shadow: 0 1px 10px rgba(1, 6, 12, 0.8);
+}
+.lp-hero-cta {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: clamp(18px, 4vw, 56px);
-  width: 100%;
-  max-width: var(--wrap);
-  padding: clamp(16px, 2.4vh, 24px) var(--pad) 0;
+  align-items: center;
+  gap: 12px 22px;
+  margin-top: clamp(4px, 1vh, 12px);
+}
+.lp-hero-alt { flex: none; }
+/* The hero's CTA comes down a size with everything else in the lockup. Scoped to
+   .lp-hero on purpose — the closing section reuses .lp-hero-cta as a wrapper and
+   must KEEP the full .lp-btn-lg scale: that button is the last thing on the page
+   and has nothing to be modest about. */
+.lp-hero .lp-hero-cta .lp-btn-lg { padding: 15px 34px; font-size: clamp(15px, 0.4vw + 13.4px, 17px); }
+
+/* ============================================================
+   THE DIVE COMPUTER
+   Was: a tall stack in the hero's right-hand column — dial, readouts, scroll cue —
+   which cost the footage a whole column of frame.
+
+   Now: a wide, short cluster in the bottom-right corner. Dial on the left of it,
+   the four readouts in a 2x2 beside it, nothing else. The scroll cue is gone; it
+   read as an instrument in a tall column and as clutter in a wide corner.
+
+   The numbers tick from landing.js; everything else here is CSS.
+   ============================================================ */
+.lp-hud {
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 1.4vw, 20px);
+  flex: none;
+}
+
+.lp-sonar {
+  position: relative;
+  /* Smaller than the column version — a 164px dial in a corner is a second focal
+     point, and the hero is only allowed one. */
+  width: clamp(84px, 7vw, 112px);
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(76, 227, 212, 0.07), rgba(1, 6, 12, 0.34) 72%);
+}
+/* Range rings as one repeating radial gradient: no elements, one paint. */
+.lp-sonar-rings {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 calc(50% / 3 - 1px), var(--line) calc(50% / 3 - 1px) calc(50% / 3));
+  opacity: 0.75;
+}
+.lp-sonar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(76, 227, 212, 0.5), rgba(76, 227, 212, 0.06) 26%, transparent 42%);
+  animation: lp-spin 3.8s linear infinite;
+  will-change: transform;
+}
+@keyframes lp-spin { to { transform: rotate(1turn); } }
+/* One contact, blinking in time with the sweep passing over it. Nothing is
+   simulated here — it is the same 3.8s clock, offset. */
+.lp-sonar-pip {
+  position: absolute;
+  top: 32%;
+  left: 63%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent);
+  animation: lp-pip 3.8s ease-out infinite;
+}
+@keyframes lp-pip {
+  0%, 30% { opacity: 0; }
+  34%     { opacity: 1; }
+  100%    { opacity: 0; }
+}
+.lp-sonar-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: var(--ink);
+  opacity: 0.8;
+}
+
+/* 2x2 rather than a 1x4 stack: four chips in a column is 180px tall and turns the
+   corner into a sidebar again.
+
+   The chip itself STACKS — label on its own line, value under it — and that is
+   the fix for the bug this panel shipped with. Side by side, the label and the
+   number were competing for one 96px box on a `1fr auto` track: "PRESSURE" at
+   0.2em tracking is wider than that column on its own, so the 1fr refused to
+   shrink any further and pushed the number out past the chip's right edge, where
+   the rounded corner clipped it. "4.9" rendered as "4.9" with the 9 half eaten,
+   and "Daylight 100 %" was on the same cliff.
+
+   Stacked, the two can never contend: each owns the full width of the chip, the
+   label is free to be as long as it likes, and the number sits at the same size
+   in all four. The column is a clamp rather than a fixed 96px so the whole
+   cluster tracks the window instead of holding one width and hoping. */
+.lp-hud-reads {
+  display: grid;
+  grid-template-columns: repeat(2, clamp(96px, 8.2vw, 122px));
+  gap: 7px;
+}
+.lp-hud-reads > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 11px 9px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(1, 6, 12, 0.42);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.lp-hud-reads dt {
+  color: var(--dimmer);
+  font-size: 9px;
+  font-weight: 700;
+  /* 0.2em on a nine-character word is what overran the old chip. 0.14em keeps the
+     instrument-label voice and buys back most of a character's width. */
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.lp-hud-reads dd {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+}
+.lp-hud-reads b {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
+  /* tabular-nums is not cosmetic here — without it every tick of the readout
+     rewidens the number and the whole panel jitters. */
+  font-variant-numeric: tabular-nums;
+}
+.lp-hud-reads span { color: var(--dimmer); font-size: 10px; font-weight: 700; }
+
+/* ---- THE FOOT ----
+   The dive log and the dive computer, in one absolutely-positioned row along the
+   bottom of the hero, on the same measure as the lockup above them.
+
+   ONE row and not two absolute boxes, which is the whole reason this element
+   exists: the rail's four columns wrap on a narrow window, and two independently
+   positioned corners would have let a wrapped rail grow straight up through the
+   computer. As flex siblings they cannot touch — the rail takes what is left after
+   the computer has taken what it needs, and `align-items: flex-end` keeps them on
+   a shared baseline whatever height either one ends up. */
+/* Full bleed on --hero-gutter rather than centred on --wrap, so the log sits on the
+   same left line as the lockup above it and the computer sits out at the right edge
+   of the WINDOW. On a 1600px monitor the centred version was holding the dial some
+   200px in from the edge, floating in the middle of the frame instead of anchoring
+   the corner. */
+.lp-hero-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: clamp(20px, 3.6vh, 42px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: clamp(20px, 4vw, 56px);
+  padding-inline: var(--hero-gutter);
+}
+
+/* The bottom-left corner: the video control stacked over the dive log. A column
+   rather than a third item in the foot's row, because the log wraps to two lines
+   on a narrow window and a button sharing that row would be the thing it wrapped
+   into. `flex: 0 1 auto` + min-width: 0 are inherited responsibilities from
+   .lp-slate, which used to be this flex child itself — the left side of the foot
+   is still the half that gives way when the row is tight. */
+.lp-hero-foot-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(11px, 1.6vh, 18px);
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* ---- THE BACKDROP'S PLAY / PAUSE ----
+   The clip has no native controls by design, so this is the entire surface for
+   it. Glass, in the same three layers as the nav pill and the secondary CTA, so
+   it reads as part of the instrument set rather than as a browser control that
+   escaped onto the page.
+
+   The two icons are both in the markup and CSS picks one off [aria-pressed],
+   which is the same discipline the cast rail uses: the attribute a screen reader
+   announces is the attribute the stylesheet paints, so the visible state and the
+   announced one cannot drift. Pressed = the video is playing = offer to pause. */
+.lp-vidbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px 8px 11px;
+  border: 1px solid rgba(122, 200, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(4, 18, 31, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(190, 235, 255, 0.15),
+    0 8px 24px rgba(1, 6, 12, 0.42);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+  color: var(--dim);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.lp-vidbtn:hover {
+  color: var(--accent);
+  border-color: rgba(76, 227, 212, 0.5);
+  background: rgba(76, 227, 212, 0.14);
+  transform: translateY(-1px);
+}
+.lp-vidbtn:active { transform: none; }
+.lp-vidbtn-icon {
+  display: grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: rgba(122, 200, 255, 0.12);
+  color: var(--ink);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.lp-vidbtn:hover .lp-vidbtn-icon { background: var(--accent); color: var(--accent-ink); }
+.lp-vidbtn-icon svg { width: 12px; height: 12px; }
+/* One icon at a time. Playing → show the pause bars; paused → show the triangle.
+   The play triangle is optically off-centre in its own box, hence the nudge. */
+.lp-vidbtn-i-play { margin-left: 1px; }
+.lp-vidbtn[aria-pressed="true"] .lp-vidbtn-i-play,
+.lp-vidbtn[aria-pressed="false"] .lp-vidbtn-i-pause { display: none; }
+.lp-vidbtn-label { line-height: 1; }
+/* Reduced motion removes the clip outright (the poster is painted in its place),
+   so there is nothing left for this to control. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-vidbtn { display: none; }
+}
+
+/* The dive log. Left-aligned with the lockup, with the ruler ticks hanging off its
+   own rule.
+
+   `flex: 0 1 auto` — shrink but never grow. With the foot now spanning the full
+   window, a growing log would stretch its rule and its tick marks a thousand pixels
+   across a wide monitor with the four entries still packed at the left end of it.
+   Sized to content, the rule ends where the content does. min-width: 0 keeps it the
+   half that gives way when the row is tight; the readouts are a fixed 2x96px grid
+   and cannot. */
+.lp-slate {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: clamp(14px, 2.4vw, 40px);
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-top: clamp(13px, 1.8vh, 20px);
   border-top: 1px solid var(--line);
+}
+.lp-slate::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, var(--line-strong) 0 1px, transparent 1px 28px);
+  pointer-events: none;
 }
 .lp-slate dt {
   color: var(--dimmer);
@@ -383,59 +970,90 @@ html {
   text-transform: uppercase;
 }
 .lp-slate dd { margin: 4px 0 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-@media (max-width: 700px) {
-  .lp-slate { position: static; transform: none; left: auto; bottom: auto; margin-top: clamp(28px, 5vh, 48px); }
-  .lp-slate div { min-width: 40%; }
+.lp-chart-bar {
+  display: block;
+  width: 92px;
+  height: 3px;
+  margin-top: 7px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.lp-chart-bar i {
+  display: block;
+  width: var(--w);
+  height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(76, 227, 212, 0.65);
 }
 
-.lp-gauge {
-  position: absolute;
-  right: var(--pad);
-  bottom: clamp(120px, 18vh, 190px);
-  display: grid;
-  justify-items: center;
-  gap: 12px;
+/* ---- HERO, NARROW AND SHORT ----
+   The desktop treatment is horizontal: blurred left third, clean right two thirds.
+   That split only works while the copy actually fits in a third of the window, so
+   below 1040px it widens, and below 700px it rotates.
+
+   The commitment being kept at every size is the same one: some meaningful part of
+   the frame stays untouched footage. */
+@media (max-width: 1040px) {
+  .lp-hud { display: none; }
+  /* No second column left to clear, so the frame goes back to centred. */
+  .lp-hero-plate { width: 100%; }
+  .lp-hero-body { width: min(100%, 34em); }
+  /* The copy now reaches further across, so the treatment follows it — but it
+     still stops, and the right edge of the frame is still clean. */
+  .lp-hero-blur {
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 38%, rgba(0, 0, 0, 0.4) 58%, transparent 74%);
+    mask-image: linear-gradient(90deg, #000 0%, #000 38%, rgba(0, 0, 0, 0.4) 58%, transparent 74%);
+  }
+  .lp-hero-wash {
+    background:
+      linear-gradient(90deg, rgba(1, 6, 12, 0.9) 0%, rgba(1, 6, 12, 0.76) 30%, rgba(1, 6, 12, 0.36) 52%, rgba(1, 6, 12, 0.08) 66%, transparent 76%),
+      linear-gradient(0deg, var(--deep) 0%, rgba(1, 6, 12, 0.72) 10%, rgba(1, 6, 12, 0.26) 24%, transparent 36%);
+  }
 }
-.lp-gauge-label {
-  color: var(--dimmer);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
+/* A laptop in a short window runs out of vertical room before it runs out of
+   horizontal: drop the dial, keep the readouts. */
+@media (max-height: 760px) and (min-width: 1041px) {
+  .lp-sonar { display: none; }
 }
-.lp-gauge-rail {
-  position: relative;
-  width: 1px;
-  height: clamp(64px, 10vh, 104px);
-  /* Tick marks as one repeating gradient: no elements, one paint. */
-  background: repeating-linear-gradient(180deg, var(--line-strong) 0 1px, transparent 1px 8px);
+@media (max-width: 700px) {
+  /* Portrait. A horizontal split has nowhere to go here — `cover` on a 16:9 clip
+     in a tall box is already showing a narrow centre crop — so the treatment turns
+     ninety degrees: the TOP of the frame is left completely alone and the copy sits
+     on a blurred band rising from the bottom. Same bargain, different axis. */
+  .lp-hero-blur {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.4) 30%, #000 56%);
+    mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.4) 30%, #000 56%);
+  }
+  .lp-hero-wash {
+    background: linear-gradient(0deg, var(--deep) 0%, rgba(1, 6, 12, 0.86) 22%, rgba(1, 6, 12, 0.56) 44%, transparent 66%);
+  }
+  .lp-hero-body { width: 100%; }
+  /* The lockup no longer needs to hold clear of an absolutely-positioned foot, so
+     the reserve comes back off the bottom padding. */
+  .lp-hero { padding-bottom: clamp(56px, 8vh, 90px); }
+  /* The foot rejoins the flow. left/right/bottom all have to be unwound or a static
+     element keeps the offsets as a plain layout shift. */
+  .lp-hero-foot {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    margin-top: clamp(26px, 4vh, 44px);
+  }
+  .lp-slate div { min-width: 40%; }
+  .lp-frame { display: none; }
 }
-.lp-gauge-bead {
-  position: absolute;
-  left: 50%;
-  width: 5px; height: 5px;
-  margin-left: -2px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px var(--accent);
-  animation: lp-bead 2.4s ease-in-out infinite;
-}
-@keyframes lp-bead {
-  0%   { top: 0; opacity: 0; }
-  25%  { opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
-@media (max-width: 1000px) { .lp-gauge { display: none; } }
 
 /* ============================================================
    FULL-BLEED BAND (the premise)
+   Two columns now: the pitch, and the standings beside it.
    ============================================================ */
 .lp-band {
   position: relative;
   display: flex;
   align-items: center;
-  min-height: min(88svh, 760px);
+  min-height: min(88svh, 800px);
   padding-block: clamp(76px, 12vh, 150px);
   overflow: hidden;
   isolation: isolate;
@@ -458,7 +1076,99 @@ html {
     radial-gradient(105% 100% at 4% 55%, rgba(1, 6, 12, 0.95), rgba(1, 6, 12, 0.08) 66%),
     linear-gradient(180deg, var(--deep) 0%, rgba(1, 6, 12, 0) 20%, rgba(1, 6, 12, 0) 76%, var(--abyss) 100%);
 }
-.lp-band-body { display: grid; gap: clamp(14px, 2.4vh, 24px); }
+.lp-band-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr);
+  align-items: center;
+  gap: clamp(34px, 6vw, 88px);
+}
+.lp-band-copy { display: grid; gap: clamp(14px, 2.4vh, 24px); }
+@media (max-width: 900px) {
+  .lp-band-body { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---- THE STANDINGS ----
+   Four rungs, two of them redacted, reusing the .lp-redact bar the ten-level
+   chart already owns. The bars are the argument: yours is a third of the length
+   of the thing above you and you cannot read its name. */
+.lp-chain {
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  padding: clamp(18px, 2.4vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(1, 6, 12, 0.52);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.lp-chain-cap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.lp-chain-cap-k {
+  color: var(--accent);
+  font-size: var(--t-eyebrow);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.lp-chain-cap-v { color: var(--dimmer); font-size: 13px; }
+
+.lp-chain-list { display: grid; gap: 6px; }
+.lp-chain-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 14px;
+  padding: 11px 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.lp-chain-row.is-you {
+  border-color: rgba(76, 227, 212, 0.38);
+  background: rgba(76, 227, 212, 0.07);
+}
+.lp-chain-rank {
+  grid-row: span 2;
+  color: var(--dimmer);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+}
+.lp-chain-row.is-you .lp-chain-rank { color: var(--accent); }
+.lp-chain-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
+/* The shared redaction bar is sized for the ten-level chart's full-width rows.
+   In here it would eat the card, so the standings get their own measure. */
+.lp-chain-name .lp-redact { width: clamp(94px, 12vw, 172px); height: 18px; }
+.lp-chain-note { grid-column: 2; color: var(--dimmer); font-size: 12.5px; }
+/* The bar spans the full row under both columns, so its length is comparable
+   across rungs rather than being measured from wherever the name ended. */
+.lp-chain-bar {
+  grid-column: 1 / -1;
+  height: 3px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: rgba(122, 200, 255, 0.1);
+  overflow: hidden;
+}
+.lp-chain-bar i {
+  display: block;
+  width: var(--w);
+  height: 100%;
+  border-radius: 2px;
+  background: rgba(157, 189, 212, 0.5);
+}
+.lp-chain-row.is-you .lp-chain-bar i {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(76, 227, 212, 0.6);
+}
+.lp-chain-foot { color: var(--dimmer); font-size: 13px; line-height: 1.5; }
 
 /* ============================================================
    THE DESCENT — the signature section.
@@ -647,6 +1357,319 @@ html {
 .lp-plate figcaption b { font-size: clamp(18px, 0.9vw + 14px, 23px); font-weight: 800; letter-spacing: -0.02em; }
 .lp-plate figcaption span { color: var(--dim); font-size: 14px; line-height: 1.5; }
 @media (max-width: 700px) { .lp-plate img { aspect-ratio: 4 / 3; } }
+
+/* ============================================================
+   CHARACTERS — the cast rail
+
+   A thumbnail rail across the top, one big plate below it, a dossier beside the
+   plate. The whole section is one tablist and one tabpanel; nothing here is a
+   carousel, so there is no timer, no cloned slides and no transform track to
+   keep in sync with anything.
+
+   The renders arrive as ~2000px stills on a flat #191919 ground, which is the
+   single fact this stylesheet is built around:
+
+     - --cast-ground is that exact grey, and it is the background of both the
+       plate and every thumbnail. With `object-fit: contain` every render
+       letterboxes to a shared 16/9 box, and because the letterbox is the same
+       colour as the render's own ground the seam is invisible. That is what lets
+       nine images of nine different aspect ratios sit on one rail without a
+       single one of them being cropped through the tail.
+     - #191919 is a flat neutral grey and this page is deep blue, so the plate
+       does not get to keep it: a vignette darkens the edges to the abyss colour
+       and a low-opacity wash tints the middle. The rectangle stops reading as a
+       screenshot and starts reading as water.
+   ============================================================ */
+.lp-cast {
+  --cast-ground: #191919;
+  background: linear-gradient(180deg, var(--deep), var(--abyss) 62%);
+}
+.lp-cast-head { margin-bottom: clamp(26px, 4vh, 44px); }
+
+/* ---- THE RAIL ----
+   Flush to the left edge of the window, gutter on the right only — the same
+   asymmetry as the gameplay strip, for the same reason: a thumbnail sliced by the
+   window says "the row continues" better than any arrow does. The gutter maths is
+   copied from .lp-strip so scrolling to the end lands the last thumbnail on the
+   same line as the heading above it. */
+.lp-cast-rail { position: relative; }
+.lp-cast-thumbs {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-behavior: smooth;
+  --gutter: max(var(--pad), calc((100vw - var(--wrap)) / 2 + var(--pad)));
+  padding: 3px var(--gutter) 16px 0;
+  scroll-padding-inline: 0 var(--gutter);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(122, 200, 255, 0.28) transparent;
+}
+@media (prefers-reduced-motion: reduce) { .lp-cast-thumbs { scroll-behavior: auto; } }
+.lp-cast-thumbs::-webkit-scrollbar { height: 7px; }
+.lp-cast-thumbs::-webkit-scrollbar-track { background: transparent; }
+.lp-cast-thumbs::-webkit-scrollbar-thumb {
+  background: rgba(122, 200, 255, 0.26);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+/* Every thumbnail is a <button>, so most of this is undoing the UA's button:
+   its font, its padding, its border, its centre-aligned text. */
+.lp-cast-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: clamp(150px, 15vw, 214px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--cast-ground);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  scroll-snap-align: start;
+  transition: border-color 0.24s ease, transform 0.24s ease;
+}
+.lp-cast-thumb img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  /* Inactive thumbnails are drained and dimmed, so exactly one creature on the
+     rail is in colour at a time. It is the cheapest possible selected state and
+     it survives being glanced at from across the room. */
+  filter: grayscale(1) brightness(0.62) contrast(1.05);
+  transition: filter 0.3s ease, transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lp-cast-thumb-name {
+  display: block;
+  padding: 8px 11px 9px;
+  border-top: 1px solid var(--line);
+  background: rgba(1, 6, 12, 0.72);
+  color: var(--dimmer);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.24s ease;
+}
+.lp-cast-thumb:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+.lp-cast-thumb:hover img { filter: grayscale(0.4) brightness(0.9); }
+.lp-cast-thumb:hover .lp-cast-thumb-name { color: var(--ink); }
+
+/* [aria-selected] rather than a class: the attribute is the state a screen reader
+   reads and the state the CSS paints, so the two cannot drift apart. */
+.lp-cast-thumb[aria-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 12px 34px rgba(1, 6, 12, 0.6);
+}
+.lp-cast-thumb[aria-selected="true"] img { filter: none; }
+.lp-cast-thumb[aria-selected="true"] .lp-cast-thumb-name { color: var(--accent); }
+/* The live tab gets the accent tick down its left edge — the one piece of the
+   selected state that is not a colour, so it still reads if the colour does not. */
+.lp-cast-thumb[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(76, 227, 212, 0.7);
+}
+
+/* The counter sits between the two arrows, inside the shared .lp-strip-nav
+   furniture. It is the only thing here that needs tabular figures — 01 and 09
+   have to be the same width or the arrows twitch as you move along the rail. */
+/* Compound selector on purpose: .lp-strip-nav is declared further down this file,
+   so a bare .lp-cast-nav would lose every shared property to it on source order
+   alone. Two classes settles it wherever the blocks end up sitting. */
+.lp-strip-nav.lp-cast-nav { align-items: center; gap: 14px; }
+.lp-cast-count {
+  min-width: 68px;
+  color: var(--dimmer);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.lp-cast-count b { color: var(--accent); }
+
+/* The clock. A 1px rail with a bar that fills over the ten seconds between
+   advances — landing.js drives it as a Web Animation and advances the rail on that
+   animation's `finish`, so this IS the timer rather than a copy of it.
+
+   transform-origin: left + scaleX is the whole mechanic: a width animation would
+   relayout sixty times a second, a transform runs on the compositor. .is-off is
+   added once the visitor takes control, which retires the rail for good. */
+.lp-cast-meter { display: grid; justify-items: center; gap: 6px; }
+.lp-cast-clock {
+  display: block;
+  width: 56px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  transition: opacity 0.3s ease;
+}
+.lp-cast-clock i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(76, 227, 212, 0.7);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.lp-cast-meter.is-off .lp-cast-clock { opacity: 0; }
+/* .lp-strip-nav hides itself on touch, where the rail is swiped rather than
+   clicked. The counter is not a control and should survive that. */
+@media (hover: none) and (pointer: coarse) {
+  .lp-strip-nav.lp-cast-nav { display: flex; }
+  .lp-strip-nav.lp-cast-nav button { display: none; }
+}
+
+/* ---- THE PANEL ----
+   Plate and dossier, and the plate takes the flexible column: it is the reason
+   the section exists. Below 900px the dossier drops under it. */
+.lp-cast-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(26px, 4vw, 58px);
+  margin-top: clamp(28px, 4vh, 52px);
+}
+
+.lp-cast-plate { position: relative; margin: 0; }
+/* Two offset outlines behind the plate, exactly as far as they need to go to say
+   "there are more of these". Decorative, so they are inside an aria-hidden span
+   and they carry no fill heavy enough to compete with the render in front. */
+.lp-cast-stack { position: absolute; inset: 0; pointer-events: none; }
+.lp-cast-stack i {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(122, 200, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(4, 18, 31, 0.4);
+}
+.lp-cast-stack i:nth-child(1) { transform: translate(-26px, -26px); opacity: 0.45; }
+.lp-cast-stack i:nth-child(2) { transform: translate(-13px, -13px); opacity: 0.7; }
+
+.lp-cast-frame {
+  position: relative;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--cast-ground);
+  box-shadow: 0 26px 70px rgba(1, 6, 12, 0.66);
+  overflow: hidden;
+}
+/* contain, never cover: these are specimen renders and a cropped tail or a
+   cropped lure is a broken picture, not a tighter crop. The letterbox is free
+   because the frame's ground and the render's ground are the same grey. */
+.lp-cast-frame img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  /* The plate is animated in on change from landing.js by toggling .is-swapping;
+     this is the resting state. */
+  transition: opacity 0.32s ease, transform 0.42s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.lp-cast-frame.is-swapping img { opacity: 0; transform: scale(0.985); }
+
+/* What turns #191919 into deep water: edges pulled down to the abyss colour so
+   the flat grey never meets the border, and a blue-teal wash across the middle so
+   the render sits in the page's palette instead of beside it. Both in one layer,
+   and it is pointer-events: none because the plate is a tabpanel that has to stay
+   clickable and focusable underneath. */
+.lp-cast-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 100% at 50% 46%, rgba(1, 6, 12, 0) 34%, rgba(1, 6, 12, 0.62) 78%, rgba(1, 6, 12, 0.86) 100%),
+    linear-gradient(180deg, rgba(76, 227, 212, 0.07), rgba(4, 18, 31, 0.28) 62%, rgba(1, 6, 12, 0.5));
+}
+/* Two hairlines through the middle of the plate. It costs nothing, and it is the
+   same "you are looking through an instrument at this" note the hero's corner
+   brackets play. */
+.lp-cast-crosshair {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 0.5px), var(--line) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)) no-repeat center / 100% 26px,
+    linear-gradient(180deg, transparent calc(50% - 0.5px), var(--line) calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)) no-repeat center / 26px 100%;
+}
+.lp-cast-cap {
+  margin-top: 12px;
+  color: var(--dimmer);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ---- THE DOSSIER ---- */
+.lp-cast-dossier { display: grid; gap: 14px; align-content: center; min-width: 0; }
+.lp-cast-tag {
+  justify-self: start;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+/* Three tempers, one pill. `playable` is the one thing on the rail you control,
+   so it is the only one that gets the accent fill. */
+.lp-cast-tag[data-temper="playable"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.lp-cast-tag[data-temper="hostile"] { border-color: rgba(255, 132, 116, 0.5); color: #ff9d8c; }
+.lp-cast-name {
+  font-size: clamp(28px, 2.4vw + 14px, 46px);
+  letter-spacing: -0.03em;
+}
+.lp-cast-role { color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+.lp-cast-note { max-width: 42ch; color: var(--dim); font-size: var(--t-body); line-height: 1.6; }
+
+.lp-cast-reads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.lp-cast-reads > div {
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(1, 6, 12, 0.4);
+}
+.lp-cast-reads dt {
+  color: var(--dimmer);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.lp-cast-reads dd { margin: 5px 0 0; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lp-cast-foot { margin-top: 6px; font-size: 13px; }
+
+@media (max-width: 900px) {
+  .lp-cast-stage { grid-template-columns: minmax(0, 1fr); }
+  /* The stack's offsets hang off the top-left of the plate. On a narrow window
+     that is a 26px bite out of the gutter, so it goes. */
+  .lp-cast-stack { display: none; }
+  .lp-cast-crosshair { display: none; }
+}
 
 /* ============================================================
    GAMEPLAY — the horizontal filmstrip
@@ -1101,8 +2124,13 @@ html.lp-js .lp-reveal.is-in { opacity: 1; transform: none; will-change: auto; }
 
 @media (prefers-reduced-motion: reduce) {
   html.lp-js .lp-reveal { opacity: 1; transform: none; transition: none; }
-  .lp-dot, .lp-gauge-bead { animation: none; }
-  .lp-btn:hover, .lp-plate:hover { transform: none; }
+  /* Every animation the hero introduces is ambience, so none of it survives here.
+     The list used to include the light shafts and the marine snow; both layers are
+     gone from the section outright now, for everyone. */
+  .lp-dot, .lp-sonar-sweep, .lp-sonar-pip { animation: none; }
+  .lp-sonar-sweep { opacity: 0.35; }
+  .lp-btn:hover, .lp-plate:hover, .lp-cast-thumb:hover { transform: none; }
   .lp-plate:hover img { transform: none; }
+  .lp-cast-frame.is-swapping img { transform: none; }
   .lp *, .lp *::before, .lp *::after { transition-duration: 0.01ms !important; }
 }

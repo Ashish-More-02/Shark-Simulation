@@ -1,12 +1,16 @@
 // ============================================================
 //  DEEP OCEAN SHARK — landing page behaviour.   pages/landing/landing.js
 //
-//  Four jobs:
+//  Eight jobs:
 //
-//    1. wireDescent()   the depth readout on the ten-level section
-//    2. wireStrip()     click-to-play and the arrows on the gameplay strip
-//    3. wireLightbox()  the <dialog> that opens a still full-size
-//    4. wireReveals()   IntersectionObserver fade-ups
+//    1. wireDescent()    the depth readout on the ten-level section
+//    2. wireStrip()      click-to-play and the arrows on the gameplay strip
+//    3. wireLightbox()   the <dialog> that opens a still full-size
+//    4. wireReveals()    IntersectionObserver fade-ups
+//    5. wireHeroHud()    the ticking readouts on the hero's dive computer
+//    6. wireHeroVideo()  the backdrop's fallbacks, pause rules and its one control
+//    7. wireCharacters() the cast rail — one tablist, one panel
+//    8. wireNavGlide()   the glass pill that follows the cursor along the nav
 //
 //  This file used to own a fifth and much bigger job: boot(), which hid the
 //  marketing markup, revealed a #game wrapper in the same document and
@@ -278,8 +282,498 @@ function wireReveals() {
 }
 
 // ============================================================
+//  5. THE HERO DIVE COMPUTER
+//
+//  A one-shot boot sequence: the four readouts sweep from surface values to
+//  station-keeping depth over a couple of seconds, then hold with a slow drift
+//  so the panel reads as live instead of as a screenshot of an instrument.
+//
+//  The numbers are real for 38 m of clear tropical water — pressure is
+//  1 + depth/10 atm exactly, and the others are interpolated between plausible
+//  surface and 38 m values. Nothing here is wired to the game; it is set
+//  dressing, which is why the whole panel is aria-hidden in the markup.
+//
+//  Cost control, because this is the only rAF loop above the fold:
+//    - the loop is gated on an IntersectionObserver and does not run while the
+//      hero is off screen
+//    - writes are throttled to ~12 per second. Four text writes at 60fps would
+//      be four style recalcs per frame for numbers nobody can read that fast
+//    - under reduced motion the final values are written once and no loop
+//      starts at all
+// ============================================================
+function wireHeroHud() {
+  const panel = document.querySelector('[data-hud]');
+  if (!panel) return;
+
+  const out = {};
+  for (const el of panel.querySelectorAll('[data-hud]')) out[el.dataset.hud] = el;
+  if (!out.depth) return;
+
+  // [surface, at 38 m, decimal places]
+  const bands = {
+    depth: [0, 38, 0],
+    temp: [22.0, 18.4, 1],
+    press: [1.0, 4.8, 1],
+    light: [100, 21, 0],
+  };
+
+  function write(t, drift) {
+    for (const key in bands) {
+      const [from, to, dp] = bands[key];
+      const v = from + (to - from) * t + (drift || 0) * (to - from) * 0.012;
+      out[key].textContent = v.toFixed(dp);
+    }
+  }
+
+  if (reduceMotion) { write(1, 0); return; }
+
+  const BOOT = 2200;      // ms of descent
+  const STEP = 1000 / 12; // ms between writes
+  let raf = 0;
+  let start = 0;
+  let last = 0;
+
+  function tick(now) {
+    raf = requestAnimationFrame(tick);
+    if (!start) start = now;
+    if (now - last < STEP) return;
+    last = now;
+
+    const elapsed = now - start;
+    if (elapsed < BOOT) {
+      // easeOutCubic: the sweep decelerates into the target rather than
+      // stopping dead on it.
+      const p = elapsed / BOOT;
+      write(1 - Math.pow(1 - p, 3), 0);
+    } else {
+      // Held depth, breathing. Two sines at incommensurate periods so the drift
+      // never settles into a visible loop.
+      const s = elapsed / 1000;
+      write(1, Math.sin(s * 0.7) + Math.sin(s * 0.23) * 0.6);
+    }
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting && !raf) {
+        raf = requestAnimationFrame(tick);
+      } else if (!entry.isIntersecting && raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    }
+  }, { threshold: 0 });
+  io.observe(panel);
+}
+
+// ============================================================
+//  6. THE HERO BACKDROP
+//
+//  The clip autoplays from the markup — muted, looped, inline, no controls — so
+//  it is running before this file is parsed and it keeps running with JS off.
+//  Everything here is the three cases the attributes cannot cover:
+//
+//    - REDUCED MOTION. A full-bleed looping video is the exact thing the setting
+//      asks not to be given. landing.css hides the element and paints the poster
+//      as a background instead; this pauses it too, because a display: none video
+//      that is still decoding is still spending the battery.
+//    - OFF SCREEN. Nothing below the fold should be decoding 1080p behind it.
+//      The hero is one screen tall and the visitor leaves it almost immediately,
+//      so this is the difference between one decode and a whole session of them.
+//    - REFUSED. Some browsers still reject a programmatic-looking autoplay, and a
+//      few will not touch the codec. Either way the poster is already on screen
+//      underneath, so the failure state is the still hero the page had before —
+//      which is why this catch is empty rather than apologetic.
+// ============================================================
+function wireHeroVideo() {
+  const video = document.querySelector('[data-hero-video]');
+  if (!video) return;
+
+  const btn = document.querySelector('[data-hero-toggle]');
+  const btnLabel = document.querySelector('[data-hero-toggle-label]');
+
+  if (reduceMotion) {
+    video.pause();
+    // removeAttribute, not just pause(): `loop` + `autoplay` will happily restart
+    // playback on the next readyState change and undo the pause.
+    video.removeAttribute('autoplay');
+    video.removeAttribute('loop');
+    // The button is display: none under this setting anyway, but leaving a live
+    // control wired to a hidden element is how a keyboard user finds a button
+    // that appears to do nothing.
+    btn?.remove();
+    return;
+  }
+
+  // The visitor's own decision, and it outranks every automatic resume below. The
+  // three rules under it — off screen, backgrounded tab, first play — are about
+  // not wasting a decode; none of them is a reason to override someone who asked
+  // for the picture to stop moving.
+  let userPaused = false;
+
+  // play() returns a promise on every engine that matters. An unhandled rejection
+  // here is a console error on a page whose hero still looks completely fine.
+  const resume = () => { if (!userPaused) video.play?.().catch(() => {}); };
+
+  resume();
+
+  const io = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting) resume();
+    else video.pause();
+  }, { threshold: 0 });
+  io.observe(video);
+
+  // A backgrounded tab already throttles rAF, but it does not necessarily stop a
+  // video decode. This does.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) video.pause();
+    else if (video.getBoundingClientRect().bottom > 0) resume();
+  });
+
+  // ---- THE CONTROL ----
+  //
+  //  The button does not hold the state; the VIDEO does. Clicking sets the intent
+  //  and asks the element, and the element's own play/pause events are what repaint
+  //  the button — so a refused autoplay, a scroll-away pause, or a backgrounded tab
+  //  all show up on the pill instead of leaving it claiming the clip is running.
+  if (!btn) return;
+
+  function paint() {
+    const playing = !video.paused;
+    btn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+    btn.setAttribute('aria-label', playing ? 'Pause the background video' : 'Play the background video');
+    if (btnLabel) btnLabel.textContent = playing ? 'Pause' : 'Play';
+  }
+
+  btn.addEventListener('click', () => {
+    userPaused = !video.paused;
+    if (userPaused) video.pause();
+    else video.play?.().catch(paint);
+  });
+
+  video.addEventListener('play', paint);
+  video.addEventListener('pause', paint);
+  paint();
+}
+
+// ============================================================
+//  8. THE NAV'S SLIDING HIGHLIGHT
+//
+//  One glass pill for the whole link group, moved to whichever link the pointer
+//  or focus is on. Measuring live rather than caching the offsets: the nav is a
+//  fluid-width pill with clamped gaps, so every window resize moves all five
+//  links, and a getBoundingClientRect on hover is cheaper than a resize observer
+//  keeping five cached rects honest.
+//
+//  The one subtlety is the COLD start. Coming from nothing the pill would slide
+//  in from x=0 at width 0, which reads as a bug rather than as a transition, so
+//  the first move is made with only the opacity transition live — the pill fades
+//  in already at the right size and place, and every move after it travels.
+// ============================================================
+function wireNavGlide() {
+  const nav = document.querySelector('[data-nav-links]');
+  const glide = nav?.querySelector('[data-nav-glide]');
+  if (!nav || !glide) return;
+
+  const links = [...nav.querySelectorAll('a')];
+  if (!links.length) return;
+
+  function moveTo(link) {
+    const cold = !nav.classList.contains('is-gliding');
+    // Only opacity animates on the way in. Restored below, after a forced reflow
+    // so the new geometry is committed before the transitions come back.
+    if (cold) glide.style.transitionProperty = 'opacity';
+
+    const a = link.getBoundingClientRect();
+    const b = nav.getBoundingClientRect();
+    glide.style.setProperty('--gw', `${a.width}px`);
+    glide.style.setProperty('--gh', `${a.height}px`);
+    glide.style.setProperty('--gx', `${a.left - b.left}px`);
+    nav.classList.add('is-gliding');
+
+    if (cold) {
+      void glide.offsetWidth;
+      glide.style.transitionProperty = '';
+    }
+  }
+
+  const clear = () => nav.classList.remove('is-gliding');
+
+  for (const link of links) {
+    link.addEventListener('pointerenter', () => moveTo(link));
+    // Keyboard gets the same highlight. :focus-visible would be the better test,
+    // but it is not exposed to a focus event — and a pill following a mouse click
+    // that has just landed on the link is harmless.
+    link.addEventListener('focus', () => moveTo(link));
+  }
+
+  nav.addEventListener('pointerleave', clear);
+  nav.addEventListener('focusout', (e) => {
+    if (!nav.contains(e.relatedTarget)) clear();
+  });
+}
+
+// ============================================================
+//  7. THE CAST RAIL
+//
+//  A tablist, not a carousel: nine <button role="tab"> thumbnails, one
+//  role="tabpanel" holding the plate and the dossier together. There is no timer,
+//  no cloned slide and no transform track, which is most of why this is short.
+//
+//  The cast is declared entirely in the markup — every field the panel shows is a
+//  data attribute on the tab, and the tab's own <img> is the source for the big
+//  plate. Adding a tenth creature is one <button> and no JS, and the rail cannot
+//  fall out of sync with the panel because there is only one copy of the data.
+//
+//  Two details worth naming:
+//
+//    - Selection is stored in aria-selected, not in a class. The attribute the
+//      screen reader reads is the same one landing.css paints, so the visible
+//      state and the announced state cannot drift.
+//    - Roving tabindex. Exactly one tab is tabbable at a time and the arrows move
+//      between them, which is what a tablist is expected to do — Tab should step
+//      PAST the rail into the panel, not through nine buttons.
+// ============================================================
+function wireCharacters() {
+  const rail = document.querySelector('[data-cast-thumbs]');
+  const panel = document.getElementById('cast-panel');
+  if (!rail || !panel) return;
+
+  const tabs = [...rail.querySelectorAll('[data-cast-tab]')];
+  if (!tabs.length) return;
+
+  const frame = panel.querySelector('.lp-cast-frame');
+  const imgEl = panel.querySelector('[data-cast-img]');
+  const section = panel.closest('section');
+
+  // One lookup table instead of nine querySelector calls per change. The key is
+  // the data attribute's name and the value is the element that displays it, so
+  // adding a field to the dossier is one entry here and one element in the HTML.
+  const out = {};
+  for (const key of ['name', 'role', 'tag', 'band', 'standing', 'note', 'cap']) {
+    out[key] = section?.querySelector(`[data-cast-${key}]`) || null;
+  }
+  const atEl = section?.querySelector('[data-cast-i]');
+  const ofEl = section?.querySelector('[data-cast-n]');
+
+  const pad = (n) => String(n).padStart(2, '0');
+  if (ofEl) ofEl.textContent = pad(tabs.length);
+
+  let at = -1;
+
+  function select(i, { focus = false } = {}) {
+    const next = (i + tabs.length) % tabs.length;
+    if (next === at) return;
+    at = next;
+
+    const tab = tabs[at];
+    const thumb = tab.querySelector('img');
+
+    tabs.forEach((t, n) => {
+      const live = n === at;
+      t.setAttribute('aria-selected', live ? 'true' : 'false');
+      // Roving tabindex: the live tab is the rail's single tab stop.
+      t.tabIndex = live ? 0 : -1;
+    });
+
+    if (imgEl && thumb) {
+      // Carry the intrinsic size across as ATTRIBUTES so swapping a 2254x1014
+      // render for a 1776x1162 one does not reflow the plate before the new file
+      // decodes. Same reasoning as the lightbox above, and the same trap: the IDL
+      // setter coerces a missing value to 0, and width="0" is a broken aspect
+      // ratio rather than an absent one.
+      for (const dim of ['width', 'height']) {
+        const v = thumb.getAttribute(dim);
+        if (v) imgEl.setAttribute(dim, v);
+        else imgEl.removeAttribute(dim);
+      }
+      imgEl.src = thumb.currentSrc || thumb.src;
+      // The plate is decorative — the dossier beside it names and describes the
+      // creature in text, and the thumbnail in the rail carries the real alt. A
+      // second copy of that sentence read out on every arrow press is noise.
+      imgEl.alt = '';
+    }
+
+    for (const key in out) {
+      if (out[key] && tab.dataset[key] != null) out[key].textContent = tab.dataset[key];
+    }
+    // The caption under the plate is the rail position, not a sentence.
+    if (out.cap) out.cap.textContent = `Specimen ${pad(at + 1)} of ${pad(tabs.length)}`;
+    // Drives the three pill colours in landing.css. Lower-cased so the markup can
+    // spell it however it reads best.
+    if (out.tag) out.tag.dataset.temper = (tab.dataset.tag || '').toLowerCase();
+    if (atEl) atEl.textContent = pad(at + 1);
+
+    revealTab(tab);
+    if (focus) tab.focus();
+  }
+
+  // Keep the live thumbnail inside the rail's own view, and NEVER touch the page's
+  // scroll doing it. This was `tab.scrollIntoView({ block: 'nearest' })`, which is
+  // fine on a click but wrong under the auto-advance below: 'nearest' still scrolls
+  // the block axis when the rail is only partly in view, so every tenth second
+  // would have quietly dragged the page under the reader. Measuring and scrolling
+  // the rail by hand is the only version that cannot do that.
+  function revealTab(tab) {
+    const railBox = rail.getBoundingClientRect();
+    const tabBox = tab.getBoundingClientRect();
+    const edge = 16;   // breathing room so the live thumb never sits flush to a rim
+    let delta = 0;
+
+    if (tabBox.left < railBox.left + edge) delta = tabBox.left - railBox.left - edge;
+    else if (tabBox.right > railBox.right - edge) delta = tabBox.right - railBox.right + edge;
+    if (delta) rail.scrollBy({ left: delta, behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+
+  // The swap animation is a class the CSS owns: drop the plate out, change the
+  // src, let it come back. Guarded on reduceMotion because a fade is still motion,
+  // and skipped entirely if the image is not there.
+  //
+  // Every path through here re-arms the clock, which is what makes the ten seconds
+  // mean "ten seconds since the last change" rather than "ten seconds since the
+  // last tick" — press next at the nine-second mark and you get a full ten before
+  // the rail moves again, not one. When the visitor has taken over, armClock() is
+  // already a no-op and this costs nothing.
+  function change(i, opts) {
+    if (reduceMotion || !frame || !imgEl) {
+      select(i, opts);
+    } else {
+      frame.classList.add('is-swapping');
+      select(i, opts);
+      // One frame is enough — the class only has to survive long enough for the src
+      // assignment to land, and the CSS transition does the rest on the way back.
+      requestAnimationFrame(() => requestAnimationFrame(() => frame.classList.remove('is-swapping')));
+    }
+    armClock();
+  }
+
+  // ---- THE CLOCK ----
+  //
+  //  The rail advances on its own every ten seconds, and the progress bar under the
+  //  counter IS the timer rather than a picture of one: it is a single Web
+  //  Animation, and the rail advances on that animation's `finish` event. One clock
+  //  means the bar cannot drift out of step with the thing it is describing, and
+  //  pause/resume comes free and exact — a setInterval plus a CSS animation would
+  //  need the elapsed time tracked by hand in two places to survive being paused.
+  //
+  //  Four things stop it, and the distinction between them matters:
+  //
+  //    stopped   PERMANENT. The visitor picked a character, so the rail is theirs
+  //              now and it never moves on its own again. This is also the
+  //              pause mechanism WCAG 2.2.2 asks for on anything that
+  //              auto-updates for more than five seconds: every control that
+  //              reaches it — nine thumbnails, two arrows, the arrow keys — is
+  //              keyboard-reachable, and the bar disappears to confirm it.
+  //    onScreen  the section is not in view, so nothing is spent on it
+  //    held      the cursor is on the rail or in the dossier, or focus is anywhere
+  //              in the section. Reading is not the same as not caring.
+  //    hidden    the tab is in the background
+  //
+  //  Under reduced motion it never starts at all: a ten-second carousel is exactly
+  //  the auto-updating content that setting is asking not to be given.
+  const DWELL = 10000;
+  const meter = section?.querySelector('[data-cast-meter]') || null;
+  const bar = section?.querySelector('[data-cast-clock]') || null;
+
+  let clock = null;
+  let stopped = reduceMotion;
+  let onScreen = false;
+  let held = false;
+
+  // The bar is the clock's host when it exists. When it does not — someone pruned
+  // the markup — the animation runs on the panel with a keyframe that changes
+  // nothing, so the timing still works and there is simply no indicator.
+  const host = bar || panel;
+  const frames = bar
+    ? [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }]
+    : [{ opacity: 1 }, { opacity: 1 }];
+
+  function sync() {
+    if (!clock) return;
+    if (stopped || !onScreen || held || document.hidden) clock.pause();
+    else clock.play();
+  }
+
+  function armClock() {
+    clock?.cancel();
+    clock = null;
+    if (stopped || tabs.length < 2 || typeof host.animate !== 'function') return;
+
+    clock = host.animate(frames, { duration: DWELL, easing: 'linear', fill: 'forwards' });
+    // Advancing from `finish` re-enters change(), which re-arms — so the loop is
+    // the animation's own lifecycle and there is no interval to leak.
+    clock.onfinish = () => change(at + 1);
+    sync();
+  }
+
+  // Hand the rail over for good. Called from every explicit selection, never from
+  // hover or focus — those only pause.
+  function surrender() {
+    if (stopped) return;
+    stopped = true;
+    clock?.cancel();
+    clock = null;
+    meter?.classList.add('is-off');
+  }
+
+  function hold(v) { held = v; sync(); }
+
+  tabs.forEach((tab, i) => tab.addEventListener('click', () => { surrender(); change(i); }));
+
+  // The keyboard contract for a tablist: arrows move and select, Home and End go
+  // to the ends. Left/Right and Up/Down both, because the rail is visually
+  // horizontal but wraps to a scroller and either gesture is a fair guess.
+  rail.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (step) { e.preventDefault(); surrender(); change(at + step, { focus: true }); return; }
+    if (e.key === 'Home') { e.preventDefault(); surrender(); change(0, { focus: true }); }
+    if (e.key === 'End') { e.preventDefault(); surrender(); change(tabs.length - 1, { focus: true }); }
+  });
+
+  section?.querySelector('[data-cast-prev]')?.addEventListener('click', () => { surrender(); change(at - 1); });
+  section?.querySelector('[data-cast-next]')?.addEventListener('click', () => { surrender(); change(at + 1); });
+
+  // Hover-pause is scoped to the rail and the dossier rather than the whole
+  // section, and that is a deliberate limit: the section is most of a screen tall,
+  // so pausing on the whole thing would mean a cursor resting anywhere in the
+  // viewport froze the rail and the feature looked broken. On the thumbnails or in
+  // the text, a resting cursor means intent.
+  for (const zone of [rail.parentElement, section?.querySelector('.lp-cast-dossier')]) {
+    zone?.addEventListener('pointerenter', () => hold(true));
+    zone?.addEventListener('pointerleave', () => hold(false));
+  }
+  // Focus pauses across the whole section. Content changing under a keyboard user
+  // is worse than content that has stopped moving.
+  section?.addEventListener('focusin', () => hold(true));
+  section?.addEventListener('focusout', (e) => {
+    if (!section.contains(e.relatedTarget)) hold(false);
+  });
+
+  document.addEventListener('visibilitychange', sync);
+
+  const io = new IntersectionObserver(([entry]) => {
+    onScreen = entry.isIntersecting;
+    sync();
+  }, { threshold: 0.35 });
+  if (section) io.observe(section);
+
+  // First paint. Honour whichever tab the markup marked live so the section's
+  // resting state is a decision in the HTML rather than an index in here. select()
+  // rather than change() — there is no clock to re-arm yet.
+  const initial = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+  select(initial < 0 ? 0 : initial);
+
+  if (stopped) meter?.classList.add('is-off');
+  else armClock();
+}
+
+// ============================================================
 //  BOOTSTRAP
 // ============================================================
 wireDescent();
 wireStrip();
 wireReveals();
+wireHeroHud();
+wireHeroVideo();
+wireCharacters();
+wireNavGlide();

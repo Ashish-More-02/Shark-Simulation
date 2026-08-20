@@ -25,9 +25,23 @@
   <link rel="icon" href="assets/landing_page/favicon.png" type="image/png" sizes="64x64" />
   <link rel="apple-touch-icon" href="assets/landing_page/apple-touch-icon.png" />
 
-  <!-- The hero is one 36 KB plate. It is the whole first paint, so it is fetched
-       at high priority and nothing else above the fold competes with it. -->
+  <!-- The hero plate is now the video's POSTER as well as the fill inside the
+       word SHARK, so it is still the whole first paint and still worth a
+       high-priority preload — it is what is on screen for the second or two
+       before the clip has enough buffered to start. One file, three jobs, one
+       request. The clip itself is deliberately NOT preloaded: it is background
+       ambience, and it must never outrank the frame the visitor actually sees
+       first. -->
   <link rel="preload" as="image" href="assets/landing_page/hero-dive.webp" fetchpriority="high" />
+
+  <!-- One display face, headings only. Archivo is a variable grotesk and the
+       width axis is the reason it is here: the hero lockup is set at wdth 112 so
+       SHARK fills the measure without the squeeze a condensed face would put on
+       it. Preconnected and swapped in — the page renders complete in the system
+       stack first and the display face upgrades it. Body copy never loads it. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,600..900&display=swap" />
 
   <link rel="stylesheet" href="pages/landing/landing.css" />
 
@@ -67,9 +81,17 @@
       </svg>
       <span>Deep Ocean Shark</span>
     </a>
-    <nav class="lp-nav-links" aria-label="Sections">
+    <!-- The links carry a single shared highlight rather than one background each:
+         .lp-nav-glide is one absolutely-positioned glass pill that landing.js
+         moves and resizes to whichever link the cursor (or focus) is on, and
+         fades out when it leaves the group. One element, transform + width only,
+         so the slide runs on the compositor. It sits FIRST in the nav so the
+         links paint over it without either needing a z-index war. -->
+    <nav class="lp-nav-links" aria-label="Sections" data-nav-links>
+      <span class="lp-nav-glide" aria-hidden="true" data-nav-glide></span>
       <a href="#descent">The descent</a>
       <a href="#downthere">Down there</a>
+      <a href="#characters">Characters</a>
       <a href="#gameplay">Gameplay</a>
       <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub</a>
     </nav>
@@ -79,72 +101,266 @@
   <main>
 
     <!-- ==================== HERO ====================
-         Centred, symmetrical, and built on one generated plate rather than on
-         footage: a single shark dropping into a column of light says
-         "exploration" in a way a gameplay clip cannot. The plate is dead still —
-         it held a scroll parallax once, and the drift was small enough that all
-         it bought was a rAF loop running in front of a WebGL game. The
-         expedition slate under the title is the only hard information on the
-         whole screen. -->
+         Type-first, asymmetric, and framed as instrumentation. Three ideas carry
+         it, and none of them is decoration:
+
+           1. SHARK is filled with the hero plate itself, via background-clip on
+              the text. The art is not behind the word and it is not beside it —
+              the letterforms are a window onto the same water. It is the same
+              file the plate uses, so the fill is a cache hit and not a second
+              download.
+           2. The lockup sits left of centre and the plate is nudged right, so the
+              two stop competing for the middle. The old centred stack parked the
+              CTA directly on top of the only shark in the picture.
+           3. Everything around the lockup is a dive computer — sonar, readouts,
+              corner brackets, the rail along the bottom. One instrument cluster
+              is what turns the empty half of a cinematic plate into something
+              that reads as deliberate instead of unfinished.
+
+         The backdrop is now the game itself, running: hero_section_video.mp4,
+         autoplaying on loop with no sound and no controls. Four attributes carry
+         that and every one of them is load-bearing —
+
+           muted + playsinline   the price of autoplay. Every browser blocks an
+                                 unmuted autoplay, and iOS additionally refuses to
+                                 play inline without playsinline, so it would
+                                 hijack the screen into its native player instead.
+           loop                  23 seconds, seamless, no end state to design for.
+           preload="metadata"    NOT auto. The poster is preloaded at high
+                                 priority instead, so the visitor has a full-frame
+                                 hero immediately and the clip fades in over the
+                                 top of it once it can actually play.
+
+         No `controls`, and it is aria-hidden with an empty alt path: this is
+         wallpaper. Everything it shows is stated in text elsewhere on the page,
+         and a screen reader announcing a media player here would be announcing
+         furniture. The poster carries the description for anyone who never gets
+         the video — a blocked codec, a data saver, reduced motion.
+
+         What moves besides the clip is two gradient layers and sixteen motes,
+         every one of them transform/opacity only, so the hero animates on the
+         compositor and never touches layout. -->
     <section class="lp-hero" id="top">
-      <img class="lp-hero-plate"
-           src="assets/landing_page/hero-dive.webp" width="1344" height="768"
-           decoding="async" fetchpriority="high"
-           alt="A lone shark far below the surface, descending into black water through a single wide column of sunlight." />
+      <video class="lp-hero-plate lp-hero-video"
+             data-hero-video
+             poster="assets/landing_page/hero-dive.webp"
+             width="1920" height="1080"
+             autoplay muted loop playsinline preload="metadata"
+             aria-hidden="true" tabindex="-1">
+        <source src="assets/landing_page/hero_section_video.mp4" type="video/mp4" />
+      </video>
+
+      <!-- Two layers, and the split between them is the point. The footage used to
+           be under a full-bleed wash that darkened all of it; now the treatment is
+           local to the left third and the rest of the frame is left alone, because
+           the reason the clip is here is for people to watch it.
+
+           .lp-hero-blur  a real backdrop-filter, masked so it is opaque behind the
+                          lockup and gone by two thirds across. It does two jobs at
+                          once: it gives the type a soft ground to sit on, and it
+                          smears the game's own HUD — which the recording has in
+                          its top-left corner — into something you read as texture
+                          rather than as someone else's interface.
+           .lp-hero-wash  the gradients. A hard left scrim under the blur, a short
+                          top scrim so the nav pill stays legible, and a bottom
+                          scrim for the rail and the dive computer. No centre
+                          darkening at all any more — that was the layer costing
+                          the footage its contrast. -->
+      <div class="lp-hero-blur" aria-hidden="true"></div>
       <div class="lp-hero-wash" aria-hidden="true"></div>
 
-      <div class="lp-hero-body">
-        <p class="lp-eyebrow lp-eyebrow-center">
-          <span class="lp-dot" aria-hidden="true"></span> Playable demo · work in progress
-        </p>
+      <!-- Two layers used to sit here and both are gone: .lp-hero-shafts, a swaying
+           set of light rays across the top of the frame, and .lp-hero-motes, sixteen
+           drifting specks of marine snow. Both were painted for a STILL hero, where
+           they were the only thing moving. Over footage they are two more moving
+           things fighting the one the visitor came to watch, and the snow in
+           particular read as a haze over the picture. The clip has its own water.
 
-        <h1 class="lp-title">
-          <span class="lp-title-a">Deep Ocean</span>
-          <span class="lp-title-b">Shark</span>
-        </h1>
+           What is left over the video is the left-hand blur, the scrims, and the
+           corner brackets — and nothing at all over the middle or the right. -->
 
-        <p class="lp-hook">The ocean does not hand anything over.<br />You go down and you take it.</p>
+      <!-- Four corner brackets. The cheapest possible way to say "you are looking
+           through something at this". -->
+      <div class="lp-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-        <div class="lp-hero-cta">
-          <a class="lp-btn lp-btn-lg lp-play" href="pages/game/game.html">
-            Dive in
-            <span class="lp-btn-sub">plays in your browser · no install</span>
-          </a>
-          <p class="lp-desktop-note" role="note">
-            <strong>Best on desktop.</strong> Keyboard, mouse and a real GPU —
-            open this on a laptop and go under.
+      <!-- One column now, not two, and it is deliberately narrow: the lockup takes
+           the left third and the rest of the window is footage. The dive computer
+           that used to sit in a second column has moved to the bottom-right
+           corner, out of the frame's way. -->
+      <div class="lp-hero-grid">
+        <div class="lp-hero-body">
+          <p class="lp-eyebrow">
+            <span class="lp-dot" aria-hidden="true"></span> Playable demo · work in progress
           </p>
+
+          <!-- data-word feeds the ::before that draws the teal outline behind each
+               line's clipped fill. It has to match that line's text exactly — a
+               mismatch renders as a ghost word offset behind the real one. Both
+               lines carry one now, because both lines are the same display type at
+               two sizes rather than an eyebrow over a logo. -->
+          <h1 class="lp-title">
+            <span class="lp-title-a" data-word="Deep Ocean">Deep Ocean</span>
+            <span class="lp-title-b" data-word="Shark">Shark</span>
+          </h1>
+
+          <p class="lp-hook">The ocean does not hand anything over. You go down and you take it.</p>
+
+          <div class="lp-hero-cta">
+            <a class="lp-btn lp-btn-lg lp-play" href="pages/game/game.html">
+              Dive in
+            </a>
+            <!-- The secondary CTA. Same pill and same scale as "Dive in" beside
+                 it, but a glass fill instead of the accent one — the hierarchy is
+                 carried by colour rather than by shape, so the two read as a pair
+                 of buttons rather than a button and a text link. -->
+            <a class="lp-btn lp-btn-lg lp-btn-glass lp-hero-alt" href="#gameplay">See it running first</a>
+            <p class="lp-desktop-note" role="note">
+              <strong>Best on desktop.</strong> Keyboard, mouse and a real GPU —
+              open this on a laptop and go under.
+            </p>
+          </div>
         </div>
       </div>
 
-      <!-- The expedition slate. Reads like the header of a dive log, and it is
-           the whole factual budget of the hero: where, how deep, how much of it
-           exists, what it was built with. -->
-      <dl class="lp-slate">
-        <div><dt>Position</dt><dd>Mariana Trench, W. Pacific</dd></div>
-        <div><dt>Floor</dt><dd>10,935 m</dd></div>
-        <div><dt>Charted</dt><dd>2 of 10 levels</dd></div>
-        <div><dt>Engine</dt><dd>Three.js · WebGL</dd></div>
-      </dl>
+      <!-- ---- THE FOOT ----
+           One row along the bottom of the hero, aligned to the same measure as the
+           lockup: the dive log on the left, the dive computer on the right. They
+           are siblings in one flex row rather than two independently-positioned
+           absolute boxes, which is the only way to guarantee they never overlap as
+           the rail's four columns wrap. -->
+      <div class="lp-hero-foot">
 
-      <div class="lp-gauge" aria-hidden="true">
-        <span class="lp-gauge-label">descend</span>
-        <div class="lp-gauge-rail"><i class="lp-gauge-bead"></i></div>
+        <!-- The bottom-left corner is a column, not a single block: the video
+             control sits directly above the dive log rather than beside it, so
+             neither can ever be pushed into the other when the log's four columns
+             wrap on a narrow window. -->
+        <div class="lp-hero-foot-left">
+
+          <!-- The backdrop's one control. The clip is deliberately `controls`-less
+               wallpaper, so this is the whole surface for it: one custom glass pill
+               that plays and pauses, nothing else. It is a real <button> with
+               aria-pressed, and landing.js also listens to the video's own play and
+               pause events — so if a browser refuses the autoplay outright, the
+               button shows "Play" rather than lying about the state.
+               Both icons ship; CSS shows one. -->
+          <button class="lp-vidbtn" type="button" data-hero-toggle
+                  aria-pressed="true" aria-label="Pause the background video">
+            <span class="lp-vidbtn-icon" aria-hidden="true">
+              <svg class="lp-vidbtn-i-pause" viewBox="0 0 24 24" focusable="false">
+                <rect x="7" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/>
+                <rect x="13.4" y="5" width="3.6" height="14" rx="1.2" fill="currentColor"/>
+              </svg>
+              <svg class="lp-vidbtn-i-play" viewBox="0 0 24 24" focusable="false">
+                <path d="M8 5.4v13.2L19 12z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="lp-vidbtn-label" data-hero-toggle-label>Pause</span>
+          </button>
+
+          <!-- The expedition rail. Reads like the header of a dive log, and it is the
+               whole factual budget of the hero: where, how deep, how much of it
+               exists, what it was built with. The charted count is now drawn as well
+               as written — two of ten is a more honest number when you can see it. -->
+          <dl class="lp-slate">
+            <div><dt>Position</dt><dd>Mariana Trench, W. Pacific</dd></div>
+            <div><dt>Floor</dt><dd>10,935 m</dd></div>
+            <div>
+              <dt>Charted</dt>
+              <dd>2 of 10 levels
+                <span class="lp-chart-bar" aria-hidden="true"><i style="--w:20%"></i></span>
+              </dd>
+            </div>
+            <div><dt>Engine</dt><dd>Three.js · WebGL</dd></div>
+          </dl>
+        </div>
+
+        <!-- The dive computer, now in the bottom-right corner. Sonar on the left
+             of the cluster, the four readouts in a 2x2 beside it — compact enough
+             to sit in a corner without taking a bite out of the footage, which is
+             the whole reason it moved off the right-hand column.
+
+             aria-hidden, and not reluctantly: every number in here is either
+             decorative or already stated in plain text on the rail beside it, and
+             a screen reader announcing a ticking depth gauge is noise with no
+             content in it. The vertical "descend" scroll cue that used to live
+             here is gone — it read as an instrument in a tall column and as
+             clutter in a wide corner. -->
+        <aside class="lp-hud" aria-hidden="true">
+          <div class="lp-sonar">
+            <span class="lp-sonar-rings"></span>
+            <span class="lp-sonar-sweep"></span>
+            <span class="lp-sonar-pip"></span>
+            <span class="lp-sonar-core"></span>
+          </div>
+
+          <dl class="lp-hud-reads" data-hud>
+            <div><dt>Depth</dt><dd><b data-hud="depth">0</b><span>m</span></dd></div>
+            <div><dt>Temp</dt><dd><b data-hud="temp">22.0</b><span>°C</span></dd></div>
+            <div><dt>Pressure</dt><dd><b data-hud="press">1.0</b><span>atm</span></dd></div>
+            <div><dt>Daylight</dt><dd><b data-hud="light">100</b><span>%</span></dd></div>
+          </dl>
+        </aside>
       </div>
     </section>
 
     <!-- ==================== THE PREMISE ====================
-         One plate, one sentence. This is the whole pitch and it is under thirty
-         words on purpose. -->
+         Left half is the pitch, still under thirty words on purpose. The right
+         half used to be nothing at all, and a two-column measure with one column
+         filled reads as a layout that broke rather than one that breathes.
+
+         What fills it is the same redaction motif the descent section runs on: the
+         two rungs you can verify are named, the two above you are bars. That
+         keeps the promise the rest of the page makes — no creature roster, no stat
+         blocks — while still giving the sentence beside it something to argue
+         with. -->
     <section class="lp-band" id="premise" aria-labelledby="premise-h">
       <img class="lp-band-bg" src="assets/landing_page/plate-surface.webp"
            width="1344" height="768" loading="lazy" decoding="async"
            alt="Sunlight fanning down through open blue water toward a dim reef ridge far below." />
       <div class="lp-band-wash" aria-hidden="true"></div>
-      <div class="lp-wrap lp-band-body lp-reveal">
-        <p class="lp-eyebrow">The premise</p>
-        <h2 id="premise-h" class="lp-h2">You are not the<br />top of this food chain.</h2>
-        <p class="lp-lede">Not yet. Hunt, grow, go deeper than you went last time. That is the whole loop, and the ocean is the only thing keeping score.</p>
+
+      <div class="lp-wrap lp-band-body">
+        <div class="lp-band-copy lp-reveal">
+          <p class="lp-eyebrow">The premise</p>
+          <h2 id="premise-h" class="lp-h2">You are not the<br />top of this food chain.</h2>
+          <p class="lp-lede">Not yet. Hunt, grow, go deeper than you went last time. That is the whole loop, and the ocean is the only thing keeping score.</p>
+        </div>
+
+        <figure class="lp-chain lp-reveal">
+          <figcaption class="lp-chain-cap">
+            <span class="lp-chain-cap-k">Standing</span>
+            <span class="lp-chain-cap-v">as the water ranks it</span>
+          </figcaption>
+
+          <ol class="lp-chain-list">
+            <li class="lp-chain-row is-redacted">
+              <span class="lp-chain-rank">01</span>
+              <span class="lp-chain-name"><span class="lp-redact" aria-label="not yet identified"></span></span>
+              <span class="lp-chain-note">deeper than you have been</span>
+              <span class="lp-chain-bar" style="--w:100%"><i></i></span>
+            </li>
+            <li class="lp-chain-row is-redacted">
+              <span class="lp-chain-rank">02</span>
+              <span class="lp-chain-name"><span class="lp-redact" aria-label="not yet identified"></span></span>
+              <span class="lp-chain-note">you have seen its shadow</span>
+              <span class="lp-chain-bar" style="--w:68%"><i></i></span>
+            </li>
+            <li class="lp-chain-row is-you">
+              <span class="lp-chain-rank">03</span>
+              <span class="lp-chain-name">You, right now</span>
+              <span class="lp-chain-note">fast, hungry, and outweighed</span>
+              <span class="lp-chain-bar" style="--w:31%"><i></i></span>
+            </li>
+            <li class="lp-chain-row">
+              <span class="lp-chain-rank">04</span>
+              <span class="lp-chain-name">Everything smaller</span>
+              <span class="lp-chain-note">a short list, and it is shrinking</span>
+              <span class="lp-chain-bar" style="--w:13%"><i></i></span>
+            </li>
+          </ol>
+
+          <p class="lp-chain-foot">Two of the four are still unnamed. You will meet them in the order they choose.</p>
+        </figure>
       </div>
     </section>
 
@@ -299,6 +515,238 @@
                  alt="A single cyan bioluminescent lure glowing in total darkness, the faint jaw of an anglerfish behind it." />
             <figcaption><b>Something is lit</b><span>Down where nothing else is. It is not lit for your benefit.</span></figcaption>
           </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== CHARACTERS ====================
+         A cast page, built the way a game's own site builds one: a rail of
+         thumbnails along the top, one big plate below it, and a dossier beside
+         the plate that changes with the selection.
+
+         The mechanics are a real tablist, not a carousel. Each thumbnail is a
+         `role="tab"` <button>, the plate and dossier together are the single
+         `role="tabpanel"`, and everything the panel needs is stamped on the tab
+         as a data attribute. That means the whole cast is declared in one place —
+         adding a tenth creature is one <button>, no JS — and it means the section
+         is fully keyboard-driven: arrows to move along the rail, Home and End to
+         jump to the ends, which is exactly what a tablist is expected to do.
+
+         The renders are 2000-odd pixels wide on a flat #191919 ground, which is
+         why the plate's own background is that same grey: `object-fit: contain`
+         letterboxes every one of them to a shared 16/9 box, and the letterbox is
+         invisible because it is the same colour as the render. A vignette over
+         the top melts the grey into the page at the edges so the plate reads as
+         deep water rather than as a screenshot with a border.
+
+         Inactive thumbnails are desaturated and dimmed; the live one is the only
+         one in colour. One glance tells you where you are on the rail. -->
+    <section class="lp-sec lp-cast" id="characters" aria-labelledby="cast-h">
+      <div class="lp-wrap">
+        <div class="lp-sec-head lp-cast-head lp-reveal">
+          <p class="lp-eyebrow"><span class="lp-dot" aria-hidden="true"></span> The cast</p>
+          <h2 id="cast-h" class="lp-h2">Everything else in the water</h2>
+          <p class="lp-lede">
+            Nine of them are modelled and swimming in the build right now. One of
+            them is you. The rest have not agreed to that arrangement.
+          </p>
+        </div>
+      </div>
+
+      <!-- The rail. Flush to the left edge of the window like the gameplay strip,
+           for the same reason: a thumbnail cut off by the window is the clearest
+           possible way to say the row keeps going. -->
+      <div class="lp-cast-rail lp-reveal">
+        <div class="lp-cast-thumbs" role="tablist" aria-label="The cast" data-cast-thumbs>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="true" aria-controls="cast-panel"
+                  data-name="The Great White"
+                  data-role="You, and the only one you get"
+                  data-tag="playable"
+                  data-band="0–10,935 m"
+                  data-standing="Third, and climbing"
+                  data-note="Fast, hungry, and outweighed by half of this rail. Everything else on it is either a meal or a lesson, and you find out which by biting it.">
+            <img src="assets/landing_page/characters/shark.png" width="2254" height="1014"
+                 loading="lazy" decoding="async" alt="The player's great white shark, a low-poly model in slate blue and off-white." />
+            <span class="lp-cast-thumb-name">Great White</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Humpback"
+                  data-role="Apex, for the time being"
+                  data-tag="hostile"
+                  data-band="0–200 m"
+                  data-standing="First, unopposed"
+                  data-note="Bite something this big and it turns around. Early on it wins, and it does not chase you far enough for that to feel like mercy.">
+            <img src="assets/landing_page/characters/whale.png" width="2420" height="1180"
+                 loading="lazy" decoding="async" alt="A humpback whale, a low-poly model in dark grey and pale underside." />
+            <span class="lp-cast-thumb-name">Humpback</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Manta Ray"
+                  data-role="Will not start it, will finish it"
+                  data-tag="hostile"
+                  data-band="0–200 m"
+                  data-standing="Second"
+                  data-note="Glides the reef floor on its own business and does not flinch when you pass. Start something and it commits, which is more than most things down here do.">
+            <img src="assets/landing_page/characters/mantaRay.png" width="1942" height="1062"
+                 loading="lazy" decoding="async" alt="A manta ray, a low-poly model with broad flat wings in dark blue." />
+            <span class="lp-cast-thumb-name">Manta Ray</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Dolphin"
+                  data-role="Faster than you are"
+                  data-tag="quarry"
+                  data-band="0–50 m"
+                  data-standing="Uncatchable head-on"
+                  data-note="Outruns a boost in open water. You do not take one in a straight line — you take one by being somewhere it was going to be anyway.">
+            <img src="assets/landing_page/characters/dolphin.png" width="2262" height="1102"
+                 loading="lazy" decoding="async" alt="A dolphin, a low-poly model in mid grey with a pale belly." />
+            <span class="lp-cast-thumb-name">Dolphin</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Anglerfish"
+                  data-role="Lit, and not for your benefit"
+                  data-tag="hostile"
+                  data-band="200 m and under"
+                  data-standing="Unranked"
+                  data-note="The only light past the second level, hung on a stalk in front of a mouth. Whatever swims at it has already made its decision.">
+            <img src="assets/landing_page/characters/anglerfish.png" width="1776" height="1162"
+                 loading="lazy" decoding="async" alt="An anglerfish, a low-poly model in dark brown with a glowing pale blue lure on a curved stalk." />
+            <span class="lp-cast-thumb-name">Anglerfish</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Clownfish"
+                  data-role="Reef-bound and quick off the mark"
+                  data-tag="quarry"
+                  data-band="0–50 m"
+                  data-standing="Fourth"
+                  data-note="Never more than a metre from cover, and it knows where all of it is. Worth almost nothing on its own, which is why you take four.">
+            <img src="assets/landing_page/characters/clownfish.png" width="2112" height="1070"
+                 loading="lazy" decoding="async" alt="A clownfish, a low-poly model in orange with white bands." />
+            <span class="lp-cast-thumb-name">Clownfish</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Trout"
+                  data-role="Schools where there is no cover"
+                  data-tag="quarry"
+                  data-band="0–50 m"
+                  data-standing="Fourth"
+                  data-note="Holds formation over open sand with nothing to hide behind. The whole shoal turns at once, and it is still not fast enough.">
+            <img src="assets/landing_page/characters/trout.png" width="2124" height="1018"
+                 loading="lazy" decoding="async" alt="A trout, a low-poly model in speckled olive and silver." />
+            <span class="lp-cast-thumb-name">Trout</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Bluefish"
+                  data-role="Holds deeper than the rest"
+                  data-tag="quarry"
+                  data-band="50–200 m"
+                  data-standing="Fourth"
+                  data-note="Sits below the shoal in water you are not comfortable in yet. That is the only reason it has lasted longer than the ones above it.">
+            <img src="assets/landing_page/characters/blueFish.png" width="2134" height="1046"
+                 loading="lazy" decoding="async" alt="A bluefish, a low-poly model in deep blue with a pale flank." />
+            <span class="lp-cast-thumb-name">Bluefish</span>
+          </button>
+
+          <button class="lp-cast-thumb" type="button" role="tab" data-cast-tab
+                  aria-selected="false" aria-controls="cast-panel" tabindex="-1"
+                  data-name="The Reef Fish"
+                  data-role="Where the whole economy starts"
+                  data-tag="quarry"
+                  data-band="0–200 m"
+                  data-standing="Fourth"
+                  data-note="Two points and one health, over and over, until you are big enough for the thing that has been watching you eat them.">
+            <img src="assets/landing_page/characters/fish.png" width="2050" height="1056"
+                 loading="lazy" decoding="async" alt="A generic reef fish, a low-poly model in yellow and white." />
+            <span class="lp-cast-thumb-name">Reef fish</span>
+          </button>
+
+        </div>
+      </div>
+
+      <!-- The arrows go under the rail, same placement and same reasoning as the
+           gameplay strip's: the rail's own flush left edge stays the thing that
+           says "keep going", and these are a mouse convenience on top of the
+           keyboard support the tablist already has. -->
+      <div class="lp-wrap">
+        <div class="lp-strip-nav lp-cast-nav">
+          <button type="button" data-cast-prev aria-label="Previous character">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+
+          <!-- The counter, and under it the rail's clock. The bar is not decoration:
+               the section advances on its own every ten seconds, and a thing that
+               moves without being touched owes the visitor an explanation of why.
+               It is also the literal timer — landing.js runs the bar as a Web
+               Animation and advances on its `finish` event, so the bar cannot drift
+               out of sync with the thing it is describing. It hides itself the
+               moment the visitor takes over. -->
+          <div class="lp-cast-meter" data-cast-meter>
+            <p class="lp-cast-count"><b data-cast-i>01</b> <span aria-hidden="true">/</span> <span data-cast-n>09</span></p>
+            <span class="lp-cast-clock" aria-hidden="true"><i data-cast-clock></i></span>
+          </div>
+
+          <button type="button" data-cast-next aria-label="Next character">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- The panel. Plate left, dossier right, and the two of them are ONE
+           tabpanel rather than two — they describe a single selection, and
+           splitting them would make a keyboard user tab through two regions to
+           read one creature.
+
+           The stack behind the plate is three offset outlines, purely decorative:
+           it says "there are more of these behind this one" without loading a
+           second image to prove it. -->
+      <div class="lp-wrap lp-cast-stage lp-reveal"
+           id="cast-panel" role="tabpanel" tabindex="0" aria-live="polite">
+        <figure class="lp-cast-plate">
+          <span class="lp-cast-stack" aria-hidden="true"><i></i><i></i></span>
+          <div class="lp-cast-frame">
+            <!-- src is the first tab's render, spelled out here rather than left
+                 for landing.js to fill in: with the module blocked the section
+                 still shows a creature instead of an empty grey box. Everything
+                 after that is JS's. -->
+            <img data-cast-img alt="" decoding="async" loading="lazy"
+                 src="assets/landing_page/characters/shark.png" width="2254" height="1014" />
+            <span class="lp-cast-vignette" aria-hidden="true"></span>
+            <span class="lp-cast-crosshair" aria-hidden="true"></span>
+          </div>
+          <figcaption class="lp-cast-cap" data-cast-cap></figcaption>
+        </figure>
+
+        <div class="lp-cast-dossier">
+          <p class="lp-cast-tag" data-cast-tag></p>
+          <h3 class="lp-cast-name" data-cast-name></h3>
+          <p class="lp-cast-role" data-cast-role></p>
+          <p class="lp-cast-note" data-cast-note></p>
+
+          <dl class="lp-cast-reads">
+            <div><dt>Depth band</dt><dd data-cast-band></dd></div>
+            <div><dt>Standing</dt><dd data-cast-standing></dd></div>
+          </dl>
+
+          <p class="lp-caption lp-cast-foot">
+            Every render on this rail is the model as it ships — pulled out of the
+            build, not drawn for the poster.
+          </p>
         </div>
       </div>
     </section>
@@ -531,7 +979,6 @@
         <div class="lp-hero-cta">
           <a class="lp-btn lp-btn-lg lp-play" href="pages/game/game.html">
             Dive in
-            <span class="lp-btn-sub">~60 fps · no install</span>
           </a>
           <p class="lp-desktop-note" role="note">
             <strong>Best on desktop.</strong> Keyboard and mouse only — come back on a laptop.
