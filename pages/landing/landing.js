@@ -1,7 +1,7 @@
 // ============================================================
 //  DEEP OCEAN SHARK — landing page behaviour.   pages/landing/landing.js
 //
-//  Eight jobs:
+//  Nine jobs:
 //
 //    1. wireDescent()    the depth readout on the ten-level section
 //    2. wireStrip()      click-to-play and the arrows on the gameplay strip
@@ -11,6 +11,7 @@
 //    6. wireHeroVideo()  the backdrop's fallbacks, pause rules and its one control
 //    7. wireCharacters() the cast rail — one tablist, one panel
 //    8. wireNavGlide()   the glass pill that follows the cursor along the nav
+//    9. wireNavMenu()    the same nav as a sheet, on a phone
 //
 //  This file used to own a fifth and much bigger job: boot(), which hid the
 //  marketing markup, revealed a #game wrapper in the same document and
@@ -392,15 +393,40 @@ function wireHeroVideo() {
   const btn = document.querySelector('[data-hero-toggle]');
   const btnLabel = document.querySelector('[data-hero-toggle-label]');
 
-  if (reduceMotion) {
+  // Taking the clip out of the DOM entirely, rather than pausing it or trusting
+  // the stylesheet's `display: none`. A hidden <video> with autoplay and loop is
+  // still an element the browser may buffer and decode, and on the devices this
+  // matters for that is the whole cost being avoided. The two cross-fading stills
+  // in landing.css take over — they are declared inside the same media query, so
+  // this is one backdrop or the other, never both.
+  let dead = false;
+  function killVideo() {
+    if (dead) return;
+    dead = true;
     video.pause();
     // removeAttribute, not just pause(): `loop` + `autoplay` will happily restart
     // playback on the next readyState change and undo the pause.
     video.removeAttribute('autoplay');
     video.removeAttribute('loop');
-    // The button is display: none under this setting anyway, but leaving a live
-    // control wired to a hidden element is how a keyboard user finds a button
-    // that appears to do nothing.
+    video.remove();
+    // Leaving a live control wired to an element that is gone is how a keyboard
+    // user finds a button that appears to do nothing.
+    btn?.remove();
+  }
+
+  // Same pair of triggers as the stylesheet's mobile backdrop and as .lp-play:
+  // a narrow window, or a device whose primary pointer cannot hover.
+  const stills = matchMedia('(max-width: 820px), (hover: none) and (pointer: coarse)');
+  if (stills.matches) { killVideo(); return; }
+  // A desktop window dragged narrow crosses into the stills. One-way on purpose:
+  // dragging back does not re-create the element, because a visitor who has been
+  // on the still backdrop for a while has no reason to be handed a video start.
+  stills.addEventListener?.('change', (e) => { if (e.matches) killVideo(); });
+
+  if (reduceMotion) {
+    video.pause();
+    video.removeAttribute('autoplay');
+    video.removeAttribute('loop');
     btn?.remove();
     return;
   }
@@ -413,7 +439,7 @@ function wireHeroVideo() {
 
   // play() returns a promise on every engine that matters. An unhandled rejection
   // here is a console error on a page whose hero still looks completely fine.
-  const resume = () => { if (!userPaused) video.play?.().catch(() => {}); };
+  const resume = () => { if (!userPaused && !dead) video.play?.().catch(() => {}); };
 
   resume();
 
@@ -510,6 +536,62 @@ function wireNavGlide() {
   nav.addEventListener('pointerleave', clear);
   nav.addEventListener('focusout', (e) => {
     if (!nav.contains(e.relatedTarget)) clear();
+  });
+}
+
+// ============================================================
+//  9. THE MOBILE MENU
+//
+//  Below 780px the same <nav> that is a row of links inside the pill becomes a
+//  glass sheet under it, and this opens and closes it. One element, one class,
+//  one attribute — .lp-nav.is-open drives every bit of the CSS, and aria-expanded
+//  on the button is the same state announced.
+//
+//  Four ways out, because a menu that can only be closed by the button that
+//  opened it is a trap on a phone: the button, any link in it (they are all
+//  in-page jumps, and a sheet left standing over the section you just asked for
+//  is the most common way this gets built wrong), Esc, and a tap anywhere else on
+//  the page.
+// ============================================================
+function wireNavMenu() {
+  const header = document.querySelector('.lp-nav');
+  const btn = header?.querySelector('[data-nav-toggle]');
+  const menu = header?.querySelector('[data-nav-links]');
+  if (!header || !btn || !menu) return;
+
+  const isOpen = () => header.classList.contains('is-open');
+
+  function set(open) {
+    header.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Close the menu' : 'Open the menu');
+  }
+
+  btn.addEventListener('click', () => set(!isOpen()));
+
+  // Any link in the sheet is an in-page jump; the sheet has to be gone before the
+  // scroll lands. delegated rather than per-link so a sixth link needs no JS.
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !isOpen()) return;
+    set(false);
+    // Focus goes back to the control that opened it, or it is left stranded
+    // inside a sheet that is no longer on screen.
+    btn.focus();
+  });
+
+  // Tap-outside. The button is inside the header, so this cannot fire on the
+  // same click that opened the menu.
+  document.addEventListener('click', (e) => {
+    if (isOpen() && !header.contains(e.target)) set(false);
+  });
+
+  // Crossing back above the breakpoint would otherwise leave .is-open set on what
+  // is now a plain row of links — invisible, but the button's aria-expanded would
+  // be lying and the next tap on it would do nothing.
+  matchMedia('(min-width: 781px)').addEventListener?.('change', (e) => {
+    if (e.matches) set(false);
   });
 }
 
@@ -777,3 +859,4 @@ wireHeroHud();
 wireHeroVideo();
 wireCharacters();
 wireNavGlide();
+wireNavMenu();

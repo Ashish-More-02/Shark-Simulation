@@ -31,8 +31,17 @@
        before the clip has enough buffered to start. One file, three jobs, one
        request. The clip itself is deliberately NOT preloaded: it is background
        ambience, and it must never outrank the frame the visitor actually sees
-       first. -->
-  <link rel="preload" as="image" href="assets/landing_page/hero-dive.webp" fetchpriority="high" />
+       first.
+
+       Both preloads carry a `media`, and they are mutually exclusive: a phone
+       never gets the clip (landing.js removes it and the CSS paints two stills
+       instead), so it must not spend its first request on that clip's poster. It
+       gets the first still at high priority instead — the same one the stylesheet
+       is about to ask for. -->
+  <link rel="preload" as="image" href="assets/landing_page/hero-dive.webp" fetchpriority="high"
+        media="(min-width: 821px) and (any-hover: hover)" />
+  <link rel="preload" as="image" href="assets/landing_page/shot-game-a.webp" fetchpriority="high"
+        media="(max-width: 820px), (hover: none) and (pointer: coarse)" />
 
   <!-- One display face, headings only. Archivo is a variable grotesk and the
        width axis is the reason it is here: the hero lockup is set at wdth 112 so
@@ -87,14 +96,34 @@
          fades out when it leaves the group. One element, transform + width only,
          so the slide runs on the compositor. It sits FIRST in the nav so the
          links paint over it without either needing a z-index war. -->
-    <nav class="lp-nav-links" aria-label="Sections" data-nav-links>
+    <!-- The SAME element is the desktop row and the mobile menu. Below 780px it
+         stops being a flex row inside the pill and becomes a glass sheet dropped
+         under it, shown by .lp-nav.is-open — which is why it is one list in the
+         markup rather than two. A second copy of five links is a second copy to
+         forget to update, and it would put every one of them in the tab order
+         twice. -->
+    <nav class="lp-nav-links" id="lp-nav-menu" aria-label="Sections" data-nav-links>
       <span class="lp-nav-glide" aria-hidden="true" data-nav-glide></span>
       <a href="#descent">The descent</a>
       <a href="#downthere">Down there</a>
       <a href="#characters">Characters</a>
       <a href="#gameplay">Gameplay</a>
       <a href="https://github.com/Ashish-More-02/Shark-Simulation" rel="noopener">GitHub</a>
+      <!-- Mobile only. The play button is hidden on touch — the game wants a
+           keyboard, a mouse and a GPU — and a menu that opens onto five links and
+           no explanation of where the game went is a menu with a hole in it. -->
+      <p class="lp-nav-note">Best on desktop — the game needs a keyboard and a mouse.</p>
     </nav>
+
+    <!-- The menu button. Three bars that become an X on open, drawn as three
+         <i>s so the change is two transforms and an opacity rather than a second
+         icon swapped in. display: none above 780px, where the links are simply
+         in the pill. -->
+    <button class="lp-nav-toggle" type="button" data-nav-toggle
+            aria-expanded="false" aria-controls="lp-nav-menu" aria-label="Open the menu">
+      <span class="lp-nav-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+
     <a class="lp-btn lp-btn-sm lp-play" href="pages/game/game.html">Dive in</a>
   </header>
 
@@ -149,6 +178,26 @@
              aria-hidden="true" tabindex="-1">
         <source src="assets/landing_page/hero_section_video.mp4" type="video/mp4" />
       </video>
+
+      <!-- The mobile backdrop. A phone gets two stills that cross-fade every six
+           seconds instead of the clip: a 1080p decode looping behind a page is the
+           single most expensive thing on a hand-held battery, and on a tall screen
+           `cover` was cropping the footage to a narrow strip of its middle anyway.
+           Two frames of real play, full-bleed, say the same thing for a few tens
+           of kilobytes.
+
+           The images are attached in landing.css INSIDE the mobile media query, so
+           a desktop never requests them — a background-image behind a query that
+           does not match is never fetched. The swap is a CSS animation on the
+           second layer, so there is no timer, no rAF and nothing to pause; the
+           whole thing costs one compositor-driven opacity.
+
+           landing.js removes the <video> outright at these widths, so the two are
+           never both live. -->
+      <div class="lp-hero-stills" aria-hidden="true">
+        <span class="lp-hero-still-a"></span>
+        <span class="lp-hero-still-b"></span>
+      </div>
 
       <!-- Two layers, and the split between them is the point. The footage used to
            be under a full-bleed wash that darkened all of it; now the treatment is
