@@ -2,6 +2,7 @@ import { SHARK } from '../config/config.js';
 import { setInputSuspended, capturePointer } from '../input.js';
 import { updateSwim } from '../audio.js';
 import { PAGES } from './pages/index.js';
+import { isPaused } from './pause.js';
 
 // ============================================================
 //  MENU  — the game's second screen. Press E.
@@ -130,7 +131,11 @@ export function armMenu() {
 
 addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') {
-    if (!armed) return;
+    // isPaused(): the pause card is up and the game is already stopped. Opening
+    // a study surface over it would leave two overlays stacked, each thinking it
+    // owns the input. pause.js does not import this file, so the dependency runs
+    // one way only.
+    if (!armed || isPaused()) return;
     e.preventDefault();
     toggleMenu();
   } else if (e.code === 'Escape' && open) {

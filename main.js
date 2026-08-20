@@ -32,6 +32,7 @@ import { showControls, showLoadError, wireStartScreen, wireMuteButton,
 import { capturePointer } from './src/input.js';
 import { startAmbience, toggleMute, setAudioSuspended, stopAudio } from './src/audio.js';
 import { isMenuOpen, armMenu } from './src/menu/menu.js';
+import { isPaused, armPause } from './src/menu/pause.js';
 import { disposeAllPreviews } from './src/menu/preview.js';
 
 let last = performance.now();
@@ -108,11 +109,11 @@ function tick(now) {
   last = now;
   uTime.value = now * 0.001;
 
-  // The menu FREEZES the simulation but not the drawing. Its overlay blurs what
-  // is behind it with a backdrop-filter, and what is behind it is this canvas —
+  // Both overlays FREEZE the simulation but not the drawing. Each blurs what is
+  // behind it with a backdrop-filter, and what is behind it is this canvas —
   // stop rendering and you are blurring a buffer nobody is maintaining.
   const cpuStart = performance.now();
-  if (!isMenuOpen()) updateWorld(dt, uTime.value);
+  if (!isMenuOpen() && !isPaused()) updateWorld(dt, uTime.value);
   cpuMs += performance.now() - cpuStart;
 
   renderer.render(scene, camera);
@@ -200,7 +201,8 @@ addEventListener('pageshow', (e) => {
   if (e.persisted && torn) location.reload();
 });
 
-// armMenu(): E does nothing while the player is still looking at "Dive In".
-wireStartScreen(() => { capturePointer(); startAmbience(); armMenu(); });
+// armMenu() / armPause(): neither screen exists while the player is still looking
+// at "Dive In" — there is no lock to lose yet and nothing to pause.
+wireStartScreen(() => { capturePointer(); startAmbience(); armMenu(); armPause(); });
 wireMuteButton(toggleMute);
 wirePerfToggle();

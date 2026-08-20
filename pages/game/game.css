@@ -464,6 +464,124 @@ html, body {
 #hint b { color: #8fd3ff; }
 
 
+/* ---- PAUSE (Esc) ----
+   The card that comes up when the player steps out of the lock. Deliberately the
+   smallest screen in the game: a heading, a line, two buttons. Anything else
+   belongs on the E menu, which is the surface built for reading.
+
+   z-index 25 puts it over the E menu's 20. The two are mutually exclusive by
+   construction (see src/menu/pause.js), so this is not a fight either can win —
+   it is a statement of which one is the outer screen if a build ever manages to
+   raise both.
+
+   The buttons are .ms-btn, borrowed from start-menu.css rather than restyled
+   here: this is the same card the player pressed "Start game" on, arrived at from
+   the other side, and it should read that way. That sheet declares its tokens on
+   #start so they cannot leak into the HUD, which means the same block has to be
+   repeated on #pause — the duplication is the price of that scoping, and it is
+   the same trade start-menu.css already documents against landing.css. */
+#pause {
+  --line-strong: rgba(122, 200, 255, 0.32);
+  --dim: #9dbdd4;
+  --dimmer: #7f9fb5;
+  --accent: #4ce3d4;
+
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 4vw, 40px);
+  background: rgba(2, 12, 22, 0.55);
+  /* Heavier than the E menu's 7px. That screen is a panel you read WITH the reef
+     behind it; this one is a full stop, and the frozen frame behind it should
+     read as somewhere you have stepped out of rather than somewhere you are
+     still looking at. */
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  color: #eef8ff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  /* The backdrop is deliberately INERT — it is not a resume target, so it must
+     not offer a pointer cursor suggesting it is one. The Resume button is the
+     only way back in; see src/menu/pause.js. */
+  cursor: default;
+}
+
+.pause-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(430px, 100%);
+  padding: clamp(24px, 4vh, 34px) clamp(22px, 3vw, 34px) clamp(22px, 3.4vh, 30px);
+  border: 1px solid rgba(120, 200, 255, 0.26);
+  border-radius: 20px;
+  background: rgba(4, 22, 38, 0.78);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.pause-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+/* Not the landing page's pulsing dot: this screen is the game STOPPED, and a
+   thing quietly beating on it says the opposite. */
+.pause-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(76, 227, 212, 0.8);
+}
+
+.pause-title {
+  margin: 0;
+  font-size: clamp(24px, 2.4vh + 15px, 32px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.pause-note {
+  margin: 0 0 6px;
+  max-width: 32ch;
+  color: var(--dim);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.pause-actions { display: grid; gap: 10px; width: 100%; }
+/* The quit button is an <a>, and the underline reset start-menu.css applies is
+   scoped to `#start a`. Only the decoration is taken — `color: inherit` here
+   would outrank .ms-btn-quiet's own and repaint it white. */
+#pause a { text-decoration: none; }
+/* .ms-btn-go is id-scoped to #dive in start-menu.css — that rule is what fills it
+   with the accent — so the primary here declares its own. Same three colours. */
+#pause-resume.ms-btn-go {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+#pause-resume.ms-btn-go:hover {
+  background: #6cf0e3;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(76, 227, 212, 0.32);
+}
+#pause-resume.ms-btn-go:active { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  #pause-resume.ms-btn-go:hover { transform: none; }
+}
+
+
 /* ---- MENU (E) ----
    The game's second screen: shell here, page contents built by src/menu/.
    A margin of ocean is left visible around the panel at every window size — that

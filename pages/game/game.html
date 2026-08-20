@@ -78,6 +78,47 @@
        src/menu/menu.js; the pages live in src/menu/pages/. -->
   <div id="menu" class="hidden"></div>
 
+  <!-- ---- PAUSE ----
+       Static markup, for the same reason #start is: one card, two buttons,
+       nothing about it is dynamic, and a card built from a template string is a
+       card nobody can find. src/menu/pause.js is the wiring.
+
+       It is NOT bound to the Escape key, and that is the whole design note. While
+       the pointer is locked, Escape belongs to the browser: it exits the lock and
+       the keydown never reaches the page, so a keydown handler for it would fire
+       on some engines, never on others, and be untestable on all of them. The
+       trigger is the LOCK BEING LOST instead — which is the honest signal, and a
+       better one, because alt-tabbing away frees the cursor too and a paused game
+       is the right thing to come back to. Esc is still what a player presses; it
+       is just not what the code listens for.
+
+       The way OUT is the Resume button and only the Resume button. Esc-to-resume
+       and click-the-backdrop-to-resume both existed and both were removed: they
+       turned Esc into a toggle over a pointer lock the page does not fully
+       control, which flickered the card and could end with the cursor loose over
+       a live game. The full sequence is written out in src/menu/pause.js. -->
+  <div id="pause" class="hidden">
+    <div class="pause-card" role="dialog" aria-modal="true" aria-labelledby="pause-h">
+      <p class="pause-eyebrow"><span class="pause-dot" aria-hidden="true"></span> Paused</p>
+      <h2 class="pause-title" id="pause-h">Still in the water</h2>
+      <p class="pause-note">Nothing down here moves until you do.</p>
+
+      <div class="pause-actions">
+        <button id="pause-resume" class="ms-btn ms-btn-go" type="button">
+          <span class="ms-btn-label">Resume</span>
+          <span class="ms-btn-sub">back into the water</span>
+        </button>
+        <!-- A plain link, like every other way out of this page. The teardown in
+             main.js runs on pagehide, so quitting here releases the ocean —
+             both WebGL contexts and the audio — on the way to the site. -->
+        <a class="ms-btn ms-btn-quiet" href="../../index.html">
+          <span class="ms-btn-label">Quit to the site</span>
+          <span class="ms-btn-sub">the ocean is released as you go</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
   <!-- Perf readout — toggled with F3 (or `). Hidden by default. -->
   <div id="perf" class="hidden"></div>
 
@@ -104,7 +145,7 @@
   <!-- Death banner. Up while the shark drifts, faded as it wakes in the shallows. -->
   <div id="death"></div>
 
-  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> free cursor</div>
+  <div id="hint" class="hidden"><b>WASD</b> move &nbsp; <b>Space/Ctrl</b> rise/dive &nbsp; <b>Shift</b> boost &nbsp; <b>Left click</b> bite &nbsp; <b>E</b> menu &nbsp; <b>Esc</b> pause</div>
 
   <button id="mute" aria-label="Mute audio">🔊</button>
 
@@ -154,7 +195,8 @@
           burn the stamina ring for speed, and <strong>left click</strong> to bite —
           everything you eat pays points, and <strong>E</strong> is where you spend
           them. Whales fight back and early on they win, so pick your fights.
-          <strong>Esc</strong> frees the cursor whenever you want out.
+          <strong>Esc</strong> pauses and gives you the cursor back, with a way
+          out of the water on it.
         </p>
 
         <dl class="ms-keys">
@@ -163,7 +205,7 @@
           <div><dt><kbd>Shift</kbd></dt><dd>Boost</dd></div>
           <div><dt><kbd>Click</kbd></dt><dd>Bite</dd></div>
           <div><dt><kbd>E</kbd></dt><dd>Your shark, in 3D</dd></div>
-          <div><dt><kbd>Esc</kbd></dt><dd>Free the cursor</dd></div>
+          <div><dt><kbd>Esc</kbd></dt><dd>Pause</dd></div>
         </dl>
       </section>
     </div>

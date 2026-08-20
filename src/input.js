@@ -19,6 +19,15 @@ addEventListener('keyup', (e) => { keys[e.code] = false; });
 // straight back into mouse-look with a menu still on screen.
 let suspended = false;
 
+// Read by the pause card (src/menu/pause.js): it comes up when the pointer lock
+// is lost, and the E menu opening is one of the things that loses it. "Is
+// something already holding the input" is the question that separates the two,
+// and asking it here rather than asking menu.js is what keeps the two screens
+// from having to know about each other.
+export function isInputSuspended() {
+  return suspended;
+}
+
 export function setInputSuspended(v) {
   suspended = v;
   if (v) {
