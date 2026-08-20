@@ -56,6 +56,7 @@ function wireDescent() {
 
   let raf = 0;
   let shown = 0;
+  let onScreen = false;
 
   function sample() {
     // The anchor is the gauge's own line, a little below the fixed nav.
@@ -81,8 +82,19 @@ function wireDescent() {
     return { depth: floor, press: rows[rows.length - 1].press };
   }
 
+  // The loop SLEEPS as soon as the readout has caught up with the page, and a
+  // scroll is what wakes it. It used to run for as long as the section was
+  // anywhere near the viewport, which meant a reader who stopped to look at the
+  // chart was paying for ten getBoundingClientRect() calls — ten forced layouts —
+  // plus three DOM writes, sixty or a hundred and twenty times a second, forever,
+  // to recompute a number that was not changing.
+  //
+  // The smoothing below is why it cannot simply run on the scroll event: the
+  // digits ease toward the target over several frames after the scroll has
+  // stopped. So the exit test is "has the eased value arrived", not "has the
+  // scroll ended" — a few frames of tail, then silence.
   function tick() {
-    raf = requestAnimationFrame(tick);
+    raf = 0;
     const { depth, press } = sample();
     // A little smoothing so the digits settle instead of flickering on a flick.
     // Under reduced motion, take the value straight.
@@ -91,11 +103,24 @@ function wireDescent() {
     if (valEl) valEl.textContent = Math.round(shown).toLocaleString('en-US');
     if (barEl) barEl.style.width = ((shown / floor) * 100).toFixed(2) + '%';
     if (pressEl) pressEl.textContent = Math.round(press).toLocaleString('en-US') + ' bar';
+
+    // Half a metre: below that the rounded readout cannot change and the bar
+    // moves by less than a hundredth of a percent.
+    if (Math.abs(depth - shown) > 0.5) raf = requestAnimationFrame(tick);
   }
 
+  function wake() {
+    if (onScreen && !raf) raf = requestAnimationFrame(tick);
+  }
+
+  addEventListener('scroll', wake, { passive: true });
+  // A resize moves every row under the anchor line without a scroll event.
+  addEventListener('resize', wake);
+
   const io = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && !raf) raf = requestAnimationFrame(tick);
-    else if (!entry.isIntersecting && raf) { cancelAnimationFrame(raf); raf = 0; }
+    onScreen = entry.isIntersecting;
+    if (onScreen) wake();
+    else if (raf) { cancelAnimationFrame(raf); raf = 0; }
   }, { rootMargin: '20% 0px' });
 
   io.observe(section);

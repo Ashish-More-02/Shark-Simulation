@@ -127,3 +127,27 @@ export function setAudioSuspended(suspended) {
     else if (started && !el.ended) el.play().catch(() => {});
   }
 }
+
+// One-way, for the page teardown in main.js. setAudioSuspended() above is the
+// reversible version and it only touches the four loops — a one-shot is a few
+// hundred milliseconds and pausing it on a tab switch would be pointless. On the
+// way OUT it is not pointless: every pooled element holds a decoded buffer and a
+// media decoder, and a document frozen into the back/forward cache holds all of
+// them for as long as the entry lives.
+//
+// `started` is left alone: nothing restarts after this, and a reload gets a fresh
+// module anyway.
+export function stopAudio() {
+  for (const el of loops) el.pause();
+  for (const pool of pools.values()) {
+    for (const el of pool.els) {
+      el.pause();
+      // Detaching the source is what actually releases the decoder. load() after
+      // it is the documented way to make the element let go rather than sit on a
+      // half-decoded buffer waiting for a src that is never coming.
+      el.removeAttribute('src');
+      el.load();
+    }
+  }
+  pools.clear();
+}

@@ -689,15 +689,24 @@ html {
    scrim below still does the legibility work on its own — a slightly sharper left
    edge is a fine outcome, and it is strictly better than a flat grey panel bolted
    over the footage. */
+/* The box stops at 52% of the window rather than spanning it, and the mask stops
+   are scaled by 1/0.52 to compensate — 20/38/52 of the viewport become 38.5/73/100
+   of a box that is 52% of the viewport, which is the same gradient over the same
+   pixels. The rendered result is identical to the full-bleed version.
+   What changes is the bill. A backdrop-filter is re-evaluated whenever its
+   backdrop changes, and this one's backdrop is a playing 1080p video — so it was
+   blurring the WHOLE viewport on every frame of that clip, and throwing away
+   everything past the halfway point because the mask had already faded to zero
+   there. Half the area, same picture. */
 .lp-hero-blur {
   position: absolute;
-  inset: 0;
+  inset: 0 48% 0 0;
   z-index: -4;
   pointer-events: none;
   -webkit-backdrop-filter: blur(9px) saturate(0.94);
   backdrop-filter: blur(9px) saturate(0.94);
-  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 20%, rgba(0, 0, 0, 0.4) 38%, transparent 52%);
-  mask-image: linear-gradient(90deg, #000 0%, #000 20%, rgba(0, 0, 0, 0.4) 38%, transparent 52%);
+  -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 38.5%, rgba(0, 0, 0, 0.4) 73%, transparent 100%);
+  mask-image: linear-gradient(90deg, #000 0%, #000 38.5%, rgba(0, 0, 0, 0.4) 73%, transparent 100%);
 }
 
 /* The gradients, and what is NOT here matters more than what is. Two layers were
@@ -1187,9 +1196,12 @@ html {
   .lp-hero-body { width: min(100%, 34em); }
   /* The copy now reaches further across, so the treatment follows it — but it
      still stops, and the right edge of the frame is still clean. */
+  /* Same trick as the desktop rule, rescaled: the treatment reaches 74% here, so
+     the box is 74% wide and the stops are divided by 0.74. */
   .lp-hero-blur {
-    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 38%, rgba(0, 0, 0, 0.4) 58%, transparent 74%);
-    mask-image: linear-gradient(90deg, #000 0%, #000 38%, rgba(0, 0, 0, 0.4) 58%, transparent 74%);
+    inset: 0 26% 0 0;
+    -webkit-mask-image: linear-gradient(90deg, #000 0%, #000 51.4%, rgba(0, 0, 0, 0.4) 78.4%, transparent 100%);
+    mask-image: linear-gradient(90deg, #000 0%, #000 51.4%, rgba(0, 0, 0, 0.4) 78.4%, transparent 100%);
   }
   .lp-hero-wash {
     background:
@@ -1258,7 +1270,15 @@ html {
      in a tall box is already showing a narrow centre crop — so the treatment turns
      ninety degrees: the TOP of the frame is left completely alone and the copy sits
      on a blurred band rising from the bottom. Same bargain, different axis. */
+  /* Back to full bleed: the mask turns ninety degrees here and its opaque end is
+     the BOTTOM of the frame, so there is no dead column to clip off the side.
+     The right inset from the two rules above has to be unwound explicitly or the
+     band stops three quarters of the way across the screen. The per-frame cost
+     that clipping was buying back does not arise here anyway — this breakpoint
+     has no video behind it, and a backdrop-filter over a still is composited once
+     rather than on every frame. */
   .lp-hero-blur {
+    inset: 0;
     -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.4) 30%, #000 56%);
     mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.4) 30%, #000 56%);
   }

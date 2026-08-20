@@ -30,6 +30,18 @@ const MARGIN = 1.25;         // fraction of the fitted distance to back off by
 const HOME_YAW = Math.PI - 0.35;
 const HOME_PITCH = 0.1;
 
+// Every preview ever built, so the page teardown in main.js can reach them. The
+// menu owns their start/stop and nothing else has a reference — which is fine
+// while the page is alive and useless when it is being handed back to the OS.
+// A live WebGL context is not freed by a navigation on its own (see the note in
+// main.js), and this one is a SECOND context with its own copy of the shark.
+const previews = new Set();
+
+export function disposeAllPreviews() {
+  for (const p of previews) p.dispose();
+  previews.clear();
+}
+
 export function createPreview(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
@@ -142,7 +154,7 @@ export function createPreview(canvas) {
     renderer.render(scene, camera);
   }
 
-  return {
+  const api = {
     start() {
       load();
       // Back to facing you on every open. Whatever angle you spun it to last time
@@ -158,5 +170,30 @@ export function createPreview(canvas) {
       cancelAnimationFrame(raf);
       raf = 0;
     },
+
+    // One-way. Called from the page teardown, never from the menu — closing the
+    // menu stops the loop, leaving the page gives the GPU its memory back.
+    //
+    // dispose() releases what three.js is tracking (programs, render targets);
+    // forceContextLoss() is what actually drops the CONTEXT, and with it every
+    // texture, buffer and shader still resident on the GPU. Without the second
+    // call the first frees comparatively little.
+    dispose() {
+      api.stop();
+      mixer?.stopAllAction();
+      scene.traverse((o) => {
+        o.geometry?.dispose();
+        for (const m of [o.material].flat()) {
+          if (!m) continue;
+          for (const v of Object.values(m)) v?.isTexture && v.dispose();
+          m.dispose();
+        }
+      });
+      renderer.dispose();
+      try { renderer.forceContextLoss(); } catch { /* extension absent: nothing to lose */ }
+    },
   };
+
+  previews.add(api);
+  return api;
 }

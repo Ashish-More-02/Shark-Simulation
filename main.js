@@ -30,8 +30,9 @@ import { propStats } from './src/props.js';
 import { showControls, showLoadError, wireStartScreen, wireMuteButton,
          wirePerfToggle, isPerfVisible, setPerf } from './src/hud.js';
 import { capturePointer } from './src/input.js';
-import { startAmbience, toggleMute, setAudioSuspended } from './src/audio.js';
+import { startAmbience, toggleMute, setAudioSuspended, stopAudio } from './src/audio.js';
 import { isMenuOpen, armMenu } from './src/menu/menu.js';
+import { disposeAllPreviews } from './src/menu/preview.js';
 
 let last = performance.now();
 
@@ -119,7 +120,9 @@ function tick(now) {
 }
 
 function startLoop() {
-  if (running) return;
+  // `torn` guards the case where the visitor leaves before buildWorld() resolves:
+  // the .then() below would otherwise start a loop on a disposed renderer.
+  if (running || torn) return;
   running = true;
   last = performance.now();          // don't bill the paused time to the next frame
   nextSlot = 0;                      // ...and don't make the cap catch up either
@@ -133,10 +136,68 @@ buildWorld().then(() => {
 }).catch(showLoadError);
 
 document.addEventListener('visibilitychange', () => {
+  if (torn) return;                  // nothing left to suspend or resume
   const hidden = document.visibilityState === 'hidden';
   setAudioSuspended(hidden);
   if (hidden) running = false;
   else startLoop();
+});
+
+// ============================================================
+//  TEARDOWN — give the machine back when the page goes away
+//
+//  The bug this fixes: leaving the game for the landing page left the laptop hot
+//  and the fans up. Every exit here is an ordinary link (#lp-exit, "Go to
+//  homepage", Escape), and a navigation does NOT free a WebGL context — it
+//  freezes the document into the back/forward cache, holding every texture,
+//  buffer, shader and geometry this scene uploaded, on both contexts (the world's
+//  and the menu preview's), for as long as the browser chooses to keep the entry
+//  around. On a Mac a live `powerPreference: 'high-performance'` context is also
+//  enough on its own to keep the machine in its high-power graphics state.
+//
+//  visibilitychange above is not the fix and was never meant to be: it stops the
+//  frame loop, which is the CPU half, and the loop was already stopped by the
+//  time the heat was being reported. What was still held was the GPU half.
+//
+//  pagehide is the right event, and deliberately not `unload`:
+//    - unload does not fire reliably on mobile Safari, and registering a handler
+//      for it makes a page ineligible for the back/forward cache in Chrome —
+//      i.e. the listener that is supposed to help would break the fast Back.
+//    - pagehide fires on BOTH paths, and e.persisted says which: true means
+//      frozen into the cache, false means actually being destroyed.
+//
+//  Both paths free the GPU, because "frozen" is exactly the case that was
+//  costing something. That makes the cached document unrestorable — its canvas
+//  has no context any more — so pageshow reloads it if the visitor presses Back.
+//  That is a real cost, one ocean re-load on Back, and it is the trade being
+//  made knowingly: a held GPU context is a cost every second the visitor is
+//  somewhere else, and a reload is a cost only if they come back.
+// ============================================================
+let torn = false;
+
+function teardown() {
+  if (torn) return;
+  torn = true;
+
+  running = false;
+  stopAudio();
+  disposeAllPreviews();
+
+  // dispose() releases what three.js tracks — programs, render targets, the
+  // things it allocated on our behalf. forceContextLoss() is what drops the
+  // context itself, and with it every byte still resident on the GPU. The first
+  // without the second frees comparatively little, which is why both are here.
+  renderer.dispose();
+  try { renderer.forceContextLoss(); } catch { /* extension absent: nothing to lose */ }
+}
+
+addEventListener('pagehide', teardown);
+
+addEventListener('pageshow', (e) => {
+  // Restored from the back/forward cache onto a canvas whose context we dropped.
+  // There is nothing to draw with, so start again rather than showing a dead
+  // frame that will never update.
+  if (e.persisted && torn) location.reload();
 });
 
 // armMenu(): E does nothing while the player is still looking at "Dive In".
